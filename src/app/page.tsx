@@ -32,24 +32,6 @@ export default function HomePage() {
 
   return (
     <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 h-full flex flex-col min-h-0 pt-2">
-      {/* Notice bar when not Admin */}
-      {!isAdmin && (
-        <div 
-          onClick={openLoginModal}
-          className="mb-2 px-3.5 py-2 bg-amber-50 hover:bg-amber-100/90 border border-amber-300 rounded-2xl flex items-center justify-between text-xs text-amber-900 cursor-pointer transition shadow-xs shrink-0"
-        >
-          <div className="flex items-center gap-2">
-            <Lock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <span>
-              <strong>Chế độ xem:</strong> {!isLoggedIn ? 'Bạn chưa đăng nhập. Chỉ tài khoản Admin mới có quyền tạo đơn, sửa/xóa và cộng trừ món.' : 'Tài khoản hiện tại không phải Admin. Chỉ Admin mới có quyền tạo đơn hoặc chỉnh sửa đơn hàng.'}
-            </span>
-          </div>
-          <span className="font-bold underline text-amber-800 whitespace-nowrap ml-2">
-            {!isLoggedIn ? 'Đăng nhập Admin →' : 'Đổi sang tài khoản Admin →'}
-          </span>
-        </div>
-      )}
-
       {/* Main Order Sheet Table */}
       <OrderSheetTable
         onEditRow={handleEditRow}
@@ -57,7 +39,7 @@ export default function HomePage() {
       />
 
       {/* Floating Action Button (FAB) at bottom-right for iPad quick order */}
-      <div className="fixed bottom-5 right-8 z-40">
+      <div className="fixed bottom-4 right-8 z-40">
         <button
           onClick={handleAddNew}
           disabled={!isAdmin}

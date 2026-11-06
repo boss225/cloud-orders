@@ -12,12 +12,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isKitchenSummaryOpen, setIsKitchenSummaryOpen] = useState(false);
 
-  // Đăng ký Service Worker cho PWA
+  // Đăng ký Service Worker cho PWA (chỉ kích hoạt ở production, tự hủy ở localhost dev)
   React.useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
-        console.warn('PWA SW register info:', err);
-      });
+      if (process.env.NODE_ENV === 'production' && window.location.hostname !== 'localhost') {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('PWA SW register info:', err);
+        });
+      } else {
+        // Hủy đăng ký Service Worker và dọn cache nếu đang chạy dev localhost để tránh kẹt cache
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((reg) => reg.unregister());
+        });
+        if ('caches' in window) {
+          caches.keys().then((names) => {
+            names.forEach((name) => caches.delete(name));
+          });
+        }
+      }
     }
   }, []);
 

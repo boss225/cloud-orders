@@ -134,7 +134,7 @@ export async function getDailySheetFromDB(dateStr: string, activeDishIds: string
   const defaultSheet: DailySheet = {
     date: dateStr,
     dishIds: activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id),
-    orders: INITIAL_ORDERS,
+    orders: [],
     updatedAt: new Date().toISOString(),
   };
 
@@ -251,5 +251,48 @@ export async function deleteDailySheetFromDB(dateStr: string): Promise<void> {
     });
   } catch (e) {
     console.error('Error deleting sheet', e);
+  }
+}
+
+// Dọn sạch toàn bộ các đơn mẫu (row-1 đến row-18) khỏi IndexedDB và LocalStorage
+export async function cleanAllSampleOrdersFromDB(): Promise<void> {
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORES.SHEETS, 'readwrite');
+      const store = tx.objectStore(STORES.SHEETS);
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        const sheets = (req.result || []) as DailySheet[];
+        sheets.forEach((sheet) => {
+          const originalCount = sheet.orders ? sheet.orders.length : 0;
+          if (originalCount > 0) {
+            sheet.orders = sheet.orders.filter((o) => !o.id.startsWith('row-'));
+            if (sheet.orders.length !== originalCount) {
+              store.put(sheet);
+            }
+          }
+        });
+        resolve();
+      };
+      req.onerror = () => resolve();
+    });
+
+    if (typeof window !== 'undefined') {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.includes('sheet_')) {
+          try {
+            const item = JSON.parse(localStorage.getItem(key) || '{}');
+            if (item.orders && item.orders.some((o: any) => o.id?.startsWith('row-'))) {
+              item.orders = item.orders.filter((o: any) => !o.id?.startsWith('row-'));
+              localStorage.setItem(key, JSON.stringify(item));
+            }
+          } catch (e) {}
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Error cleaning sample orders from DB', e);
   }
 }

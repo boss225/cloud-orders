@@ -23,7 +23,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-function removeVietnameseTones(str: string): string {
+function removeVietnameseTones(str?: string | null): string {
+  if (!str) return "";
   return str
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -34,7 +35,7 @@ function removeVietnameseTones(str: string): string {
 
 export default function MenuManagementPage() {
   const {
-    dishes,
+    dishes = [],
     dailySheet,
     selectedDate,
     addOrUpdateDish,
@@ -59,13 +60,14 @@ export default function MenuManagementPage() {
   const activeDishIds = dailySheet?.dishIds || [];
 
   // Filter dishes by search term (name & shortName, accent-insensitive)
-  const filteredDishes = dishes.filter((dish) => {
+  const filteredDishes = (dishes || []).filter((dish) => {
+    if (!dish) return false;
     if (!searchQuery.trim()) return true;
     const term = searchQuery.trim().toLowerCase();
     const normalizedTerm = removeVietnameseTones(term);
 
-    const dishName = dish.name.toLowerCase();
-    const dishShort = dish.shortName.toLowerCase();
+    const dishName = (dish.name || "").toLowerCase();
+    const dishShort = (dish.shortName || "").toLowerCase();
     const normalizedName = removeVietnameseTones(dishName);
     const normalizedShort = removeVietnameseTones(dishShort);
 
@@ -179,14 +181,14 @@ export default function MenuManagementPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>Món phục vụ ngày: {formatDateVN(selectedDate)}</span>
+              <span>Món ngày: {formatDateVN(selectedDate)}</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 font-bold">
                 {activeDishIds.length} món được chọn
               </span>
             </h2>
             <p className="text-xs text-slate-500">
-              Bấm vào từng món để Bật / Tắt hiển thị cột trên Sheet Order của
-              ngày hôm nay.
+              Bấm vào từng món để hiển thị trên Order của
+              ngày.
             </p>
           </div>
 
@@ -375,8 +377,9 @@ export default function MenuManagementPage() {
                 </div>
               </div>
             );
-          }))}
-        </div>
+          })
+        )}
+      </div>
       </div>
 
       {/* Dish Add/Edit Modal */}

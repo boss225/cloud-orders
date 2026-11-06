@@ -151,7 +151,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
           <tbody className="divide-y divide-slate-200">
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={activeDishes.length + 4} className="py-12 text-center text-slate-400 font-medium text-xs">
+                <td colSpan={activeDishes.length + 4} style={{height: 'calc(100dvh - 230px)'}} className="py-12 text-center text-slate-400 font-medium text-xs">
                   Chưa có đơn hàng nào trong sheet ngày này. Bấm nút (+) để tạo đơn nhanh!
                 </td>
               </tr>

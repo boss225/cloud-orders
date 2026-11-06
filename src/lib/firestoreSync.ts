@@ -130,6 +130,44 @@ export function subscribeRemoteDailySheet(
 }
 
 // 3. Quy tắc 10 ngày có đơn trên Cloud: Tự động xóa ngày cũ nhất nếu có > 10 ngày bán
+export async function deleteDailySheetFromFirestore(dateStr: string): Promise<void> {
+  const { db, isConfigured } = getFirebaseInstance();
+  if (!isConfigured || !db) return;
+
+  try {
+    const docRef = doc(db, 'daily_sheets', dateStr);
+    await deleteDoc(docRef);
+    console.log(`[Firebase Sync] Đã xóa sheet ngày ${dateStr} trên Cloud`);
+  } catch (err) {
+    console.warn(`[Firebase Sync] Lỗi xóa sheet ngày ${dateStr} trên Cloud:`, err);
+  }
+}
+
+// Dọn sạch các đơn mẫu (row-1 đến row-18) trên Cloud Firestore
+export async function cleanAllSampleOrdersFromFirestore(): Promise<void> {
+  const { db, isConfigured } = getFirebaseInstance();
+  if (!isConfigured || !db) return;
+
+  try {
+    const colRef = collection(db, 'daily_sheets');
+    const snapshot = await getDocs(colRef);
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as DailySheet;
+      if (data.orders && data.orders.some((o) => o.id?.startsWith('row-'))) {
+        const cleanOrders = data.orders.filter((o) => !o.id?.startsWith('row-'));
+        await setDoc(doc(db, 'daily_sheets', docSnap.id), {
+          ...data,
+          orders: cleanOrders,
+          updatedAt: new Date().toISOString(),
+        });
+        console.log(`[Firebase Sync] Đã lọc bỏ đơn mẫu khỏi sheet ngày ${docSnap.id} trên Cloud`);
+      }
+    }
+  } catch (err) {
+    console.warn('[Firebase Sync] Lỗi dọn đơn mẫu trên Firestore:', err);
+  }
+}
+
 async function cleanupOldSalesDaysOnFirestore(db: any): Promise<void> {
   try {
     const colRef = collection(db, 'daily_sheets');

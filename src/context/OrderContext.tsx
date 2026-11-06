@@ -7,13 +7,17 @@ import {
   saveStoredDishes, 
   getDailySheetFromDB, 
   saveDailySheetToDB, 
-  getActiveSalesDays 
+  getActiveSalesDays,
+  deleteDailySheetFromDB,
+  cleanAllSampleOrdersFromDB 
 } from '@/lib/indexedDBService';
 import { 
   pushDailySheetToFirestore, 
   pushDishesToFirestore, 
   subscribeRemoteDailySheet, 
-  subscribeRemoteDishes 
+  subscribeRemoteDishes,
+  deleteDailySheetFromFirestore,
+  cleanAllSampleOrdersFromFirestore 
 } from '@/lib/firestoreSync';
 import { getFirebaseInstance } from '@/lib/firebase';
 import { getTodayString } from '@/lib/utils';
@@ -46,6 +50,7 @@ interface OrderContextType {
   deleteDish: (dishId: string) => Promise<void>;
   toggleDishInDailyMenu: (dishId: string) => Promise<void>;
   setDailyMenuColumns: (dishIds: string[]) => Promise<void>;
+  deleteDailySheet: (dateStr: string) => Promise<void>;
   resetToPhotoData: () => void;
   refreshSalesDays: () => Promise<void>;
 }
@@ -58,7 +63,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [dailySheet, setDailySheet] = useState<DailySheet | null>(() => ({
     date: getTodayString(),
     dishIds: INITIAL_DISHES.map(d => d.id),
-    orders: INITIAL_ORDERS,
+    orders: [],
     updatedAt: new Date().toISOString(),
   }));
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +81,16 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     const days = await getActiveSalesDays();
     setActiveSalesDays(days);
   }, []);
+
+  // Tự động dọn sạch các đơn mẫu cũ (row-1 đến row-18) khi khởi động
+  useEffect(() => {
+    const cleanSamples = async () => {
+      await cleanAllSampleOrdersFromDB();
+      await cleanAllSampleOrdersFromFirestore();
+      await refreshSalesDays();
+    };
+    cleanSamples();
+  }, [refreshSalesDays]);
 
   // 1. Tải danh mục món ăn (Dishes) từ IndexedDB + Lắng nghe Realtime từ Firebase
   useEffect(() => {
@@ -103,14 +118,16 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
     // Tải trước từ IndexedDB cục bộ (cực nhanh, không cần mạng)
     getDailySheetFromDB(selectedDate, activeIds).then((sheet) => {
-      setDailySheet(sheet);
+      const cleanOrders = (sheet.orders || []).filter(o => !o.id.startsWith('row-'));
+      setDailySheet({ ...sheet, orders: cleanOrders });
       setIsLoading(false);
       refreshSalesDays();
     });
 
     // Lắng nghe realtime từ Firebase cho ngày được chọn (đồng bộ giữa các thiết bị)
     const unsubscribe = subscribeRemoteDailySheet(selectedDate, (remoteSheet) => {
-      setDailySheet(remoteSheet);
+      const cleanOrders = (remoteSheet.orders || []).filter(o => !o.id.startsWith('row-'));
+      setDailySheet({ ...remoteSheet, orders: cleanOrders });
       refreshSalesDays();
     });
 
@@ -121,9 +138,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
   // Active dishes hiện đang làm cột trên sheet
   const activeDishes = React.useMemo(() => {
-    if (!dailySheet || dishes.length === 0) return dishes;
+    if (!dailySheet || !dishes || dishes.length === 0) return dishes || [];
     const dishMap = new Map(dishes.map(d => [d.id, d]));
-    return dailySheet.dishIds
+    return (dailySheet.dishIds || [])
       .map(id => dishMap.get(id))
       .filter((d): d is Dish => Boolean(d));
   }, [dailySheet, dishes]);
@@ -252,21 +269,23 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     // 2. Đẩy Firebase Realtime
     await pushDishesToFirestore(updated);
 
-    if (dailySheet && dailySheet.dishIds.includes(dishId)) {
+    const currentDishIds = dailySheet?.dishIds || [];
+    if (dailySheet && currentDishIds.includes(dishId)) {
       persistSheet({
         ...dailySheet,
-        dishIds: dailySheet.dishIds.filter(id => id !== dishId),
+        dishIds: currentDishIds.filter(id => id !== dishId),
       });
     }
   };
 
   const toggleDishInDailyMenu = async (dishId: string) => {
     if (!dailySheet) return;
+    const currentIds = dailySheet.dishIds || [];
     let newIds: string[];
-    if (dailySheet.dishIds.includes(dishId)) {
-      newIds = dailySheet.dishIds.filter(id => id !== dishId);
+    if (currentIds.includes(dishId)) {
+      newIds = currentIds.filter(id => id !== dishId);
     } else {
-      newIds = [...dailySheet.dishIds, dishId];
+      newIds = [...currentIds, dishId];
     }
     persistSheet({ ...dailySheet, dishIds: newIds });
   };
@@ -275,6 +294,29 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     if (!dailySheet) return;
     persistSheet({ ...dailySheet, dishIds });
   };
+
+  const deleteDailySheet = useCallback(async (dateStr: string) => {
+    // 1. Xóa khỏi IndexedDB cục bộ
+    await deleteDailySheetFromDB(dateStr);
+
+    // 2. Xóa khỏi Cloud Firestore
+    await deleteDailySheetFromFirestore(dateStr);
+
+    // 3. Nếu đang xem đúng ngày này, làm sạch orders về mảng rỗng
+    if (selectedDate === dateStr) {
+      setDailySheet((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          orders: [],
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    }
+
+    // 4. Cập nhật lại danh sách các ngày có đơn
+    await refreshSalesDays();
+  }, [selectedDate, refreshSalesDays]);
 
   const resetToPhotoData = () => {
     if (!dailySheet) return;
@@ -311,6 +353,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         deleteDish,
         toggleDishInDailyMenu,
         setDailyMenuColumns,
+        deleteDailySheet,
         resetToPhotoData,
         refreshSalesDays,
       }}
