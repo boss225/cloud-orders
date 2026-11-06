@@ -124,16 +124,30 @@ export async function getDailySheetFromDB(dateStr: string, activeDishIds: string
     });
 
     if (sheet) {
-      return sheet;
+      const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id);
+      const normalized: DailySheet = {
+        ...sheet,
+        dishIds: sheet.dishIds || defaultIds,
+        morningDishIds: sheet.morningDishIds ?? sheet.dishIds ?? defaultIds,
+        afternoonDishIds: sheet.afternoonDishIds ?? sheet.dishIds ?? defaultIds,
+        orders: (sheet.orders || []).map((o) => ({
+          ...o,
+          session: o.session || 'morning',
+        })),
+      };
+      return normalized;
     }
   } catch (err) {
     console.warn('Error reading sheet from IndexedDB', err);
   }
 
   // Khởi tạo sheet mặc định nếu chưa có
+  const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id);
   const defaultSheet: DailySheet = {
     date: dateStr,
-    dishIds: activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id),
+    dishIds: defaultIds,
+    morningDishIds: defaultIds,
+    afternoonDishIds: defaultIds,
     orders: [],
     updatedAt: new Date().toISOString(),
   };
@@ -209,7 +223,13 @@ export async function cleanupOldSalesDays(db: IDBDatabase): Promise<string[]> {
 }
 
 // Lấy danh sách các ngày đang có đơn trong IndexedDB (tối đa 10 ngày)
-export async function getActiveSalesDays(): Promise<Array<{ date: string; orderCount: number; updatedAt: string }>> {
+export async function getActiveSalesDays(): Promise<Array<{ 
+  date: string; 
+  orderCount: number; 
+  morningOrderCount: number;
+  afternoonOrderCount: number;
+  updatedAt: string;
+}>> {
   try {
     const db = await openDB();
     return new Promise((resolve) => {
@@ -222,11 +242,17 @@ export async function getActiveSalesDays(): Promise<Array<{ date: string; orderC
         const salesSheets = allSheets
           .filter((s) => s.orders && s.orders.length > 0)
           .sort((a, b) => b.date.localeCompare(a.date)) // Mới nhất lên đầu
-          .map((s) => ({
-            date: s.date,
-            orderCount: s.orders.length,
-            updatedAt: s.updatedAt,
-          }));
+          .map((s) => {
+            const morningCount = (s.orders || []).filter((o) => (o.session || 'morning') === 'morning').length;
+            const afternoonCount = (s.orders || []).filter((o) => o.session === 'afternoon').length;
+            return {
+              date: s.date,
+              orderCount: (s.orders || []).length,
+              morningOrderCount: morningCount,
+              afternoonOrderCount: afternoonCount,
+              updatedAt: s.updatedAt,
+            };
+          });
 
         resolve(salesSheets.slice(0, MAX_ACTIVE_SALES_DAYS));
       };

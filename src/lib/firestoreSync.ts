@@ -113,10 +113,20 @@ export function subscribeRemoteDailySheet(
       if (data.lastUpdatedByDeviceId !== currentDeviceId) {
         console.log(`[Firebase Realtime] Nhận cập nhật Sheet ngày ${dateStr} từ thiết bị khác`);
         const { lastUpdatedByDeviceId, ...cleanSheet } = data;
+        const normalizedSheet: DailySheet = {
+          ...cleanSheet,
+          dishIds: cleanSheet.dishIds || [],
+          morningDishIds: cleanSheet.morningDishIds ?? cleanSheet.dishIds ?? [],
+          afternoonDishIds: cleanSheet.afternoonDishIds ?? cleanSheet.dishIds ?? [],
+          orders: (cleanSheet.orders || []).map((o) => ({
+            ...o,
+            session: o.session || 'morning',
+          })),
+        };
         // Lưu vào IndexedDB cục bộ của máy này
-        await saveDailySheetToDB(cleanSheet);
+        await saveDailySheetToDB(normalizedSheet);
         // Cập nhật lên màn hình
-        onRemoteChange(cleanSheet);
+        onRemoteChange(normalizedSheet);
       }
     }, (err) => {
       console.warn(`[Firebase Sync] Lỗi lắng nghe sheet ${dateStr}:`, err);

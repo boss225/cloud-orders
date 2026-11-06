@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { DailySheet, Dish, OrderRow } from '@/types';
+import { DailySheet, Dish, OrderRow, MenuSession } from '@/types';
 import { 
   getStoredDishes, 
   saveStoredDishes, 
@@ -20,21 +20,30 @@ import {
   cleanAllSampleOrdersFromFirestore 
 } from '@/lib/firestoreSync';
 import { getFirebaseInstance } from '@/lib/firebase';
-import { getTodayString } from '@/lib/utils';
+import { getTodayString, getCurrentHourVN } from '@/lib/utils';
 import { INITIAL_DISHES, INITIAL_ORDERS } from '@/lib/mockData';
 
 export interface ActiveSalesDayInfo {
   date: string;
   orderCount: number;
+  morningOrderCount?: number;
+  afternoonOrderCount?: number;
   updatedAt: string;
 }
 
 interface OrderContextType {
   selectedDate: string;
   setSelectedDate: (date: string) => void;
+  selectedSession: MenuSession;
+  setSelectedSession: (session: MenuSession) => void;
   dishes: Dish[];
   dailySheet: DailySheet | null;
   activeDishes: Dish[];
+  morningDishes: Dish[];
+  afternoonDishes: Dish[];
+  sessionOrders: OrderRow[];
+  morningOrders: OrderRow[];
+  afternoonOrders: OrderRow[];
   isLoading: boolean;
   activeSalesDays: ActiveSalesDayInfo[];
   savedDaysCount: number;
@@ -48,8 +57,9 @@ interface OrderContextType {
   // Dish & Menu actions
   addOrUpdateDish: (dish: Dish) => Promise<void>;
   deleteDish: (dishId: string) => Promise<void>;
-  toggleDishInDailyMenu: (dishId: string) => Promise<void>;
-  setDailyMenuColumns: (dishIds: string[]) => Promise<void>;
+  toggleDishInDailyMenu: (dishId: string, session?: MenuSession) => Promise<void>;
+  setDailyMenuColumns: (dishIds: string[], session?: MenuSession) => Promise<void>;
+  copyMenuSession: (from: MenuSession, to: MenuSession) => Promise<void>;
   deleteDailySheet: (dateStr: string) => Promise<void>;
   resetToPhotoData: () => void;
   refreshSalesDays: () => Promise<void>;
@@ -59,10 +69,22 @@ const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
+  // Khởi tạo mặc định 'morning' đồng nhất trên cả SSR và initial client render để tránh Hydration error
+  const [selectedSession, setSelectedSession] = useState<MenuSession>('morning');
+
+  // Sau khi client mount, tự động cập nhật ca theo thời gian thực (từ 13:00 trở đi là ca chiều)
+  useEffect(() => {
+    const h = getCurrentHourVN();
+    if (h >= 13) {
+      setSelectedSession('afternoon');
+    }
+  }, []);
   const [dishes, setDishes] = useState<Dish[]>(INITIAL_DISHES);
   const [dailySheet, setDailySheet] = useState<DailySheet | null>(() => ({
     date: getTodayString(),
     dishIds: INITIAL_DISHES.map(d => d.id),
+    morningDishIds: INITIAL_DISHES.map(d => d.id),
+    afternoonDishIds: INITIAL_DISHES.map(d => d.id),
     orders: [],
     updatedAt: new Date().toISOString(),
   }));
@@ -118,16 +140,34 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
     // Tải trước từ IndexedDB cục bộ (cực nhanh, không cần mạng)
     getDailySheetFromDB(selectedDate, activeIds).then((sheet) => {
-      const cleanOrders = (sheet.orders || []).filter(o => !o.id.startsWith('row-'));
-      setDailySheet({ ...sheet, orders: cleanOrders });
+      const cleanOrders = (sheet.orders || [])
+        .filter(o => !o.id.startsWith('row-'))
+        .map(o => ({ ...o, session: o.session || 'morning' }));
+      const normalized: DailySheet = {
+        ...sheet,
+        dishIds: sheet.dishIds || activeIds,
+        morningDishIds: sheet.morningDishIds ?? sheet.dishIds ?? activeIds,
+        afternoonDishIds: sheet.afternoonDishIds ?? sheet.dishIds ?? activeIds,
+        orders: cleanOrders,
+      };
+      setDailySheet(normalized);
       setIsLoading(false);
       refreshSalesDays();
     });
 
     // Lắng nghe realtime từ Firebase cho ngày được chọn (đồng bộ giữa các thiết bị)
     const unsubscribe = subscribeRemoteDailySheet(selectedDate, (remoteSheet) => {
-      const cleanOrders = (remoteSheet.orders || []).filter(o => !o.id.startsWith('row-'));
-      setDailySheet({ ...remoteSheet, orders: cleanOrders });
+      const cleanOrders = (remoteSheet.orders || [])
+        .filter(o => !o.id.startsWith('row-'))
+        .map(o => ({ ...o, session: o.session || 'morning' }));
+      const normalized: DailySheet = {
+        ...remoteSheet,
+        dishIds: remoteSheet.dishIds || activeIds,
+        morningDishIds: remoteSheet.morningDishIds ?? remoteSheet.dishIds ?? activeIds,
+        afternoonDishIds: remoteSheet.afternoonDishIds ?? remoteSheet.dishIds ?? activeIds,
+        orders: cleanOrders,
+      };
+      setDailySheet(normalized);
       refreshSalesDays();
     });
 
@@ -136,37 +176,84 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     };
   }, [selectedDate, dishes, refreshSalesDays]);
 
-  // Active dishes hiện đang làm cột trên sheet
-  const activeDishes = React.useMemo(() => {
+  // Dishes cho ca sáng
+  const morningDishes = React.useMemo(() => {
     if (!dailySheet || !dishes || dishes.length === 0) return dishes || [];
     const dishMap = new Map(dishes.map(d => [d.id, d]));
-    return (dailySheet.dishIds || [])
+    const ids = dailySheet.morningDishIds ?? dailySheet.dishIds ?? [];
+    return ids
       .map(id => dishMap.get(id))
       .filter((d): d is Dish => Boolean(d));
   }, [dailySheet, dishes]);
 
+  // Dishes cho ca chiều
+  const afternoonDishes = React.useMemo(() => {
+    if (!dailySheet || !dishes || dishes.length === 0) return dishes || [];
+    const dishMap = new Map(dishes.map(d => [d.id, d]));
+    const ids = dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? [];
+    return ids
+      .map(id => dishMap.get(id))
+      .filter((d): d is Dish => Boolean(d));
+  }, [dailySheet, dishes]);
+
+  // Active dishes hiện đang làm cột trên sheet theo ca được chọn
+  const activeDishes = React.useMemo(() => {
+    return selectedSession === 'afternoon' ? afternoonDishes : morningDishes;
+  }, [selectedSession, morningDishes, afternoonDishes]);
+
+  // Orders được phân loại theo ca
+  const morningOrders = React.useMemo(() => {
+    if (!dailySheet?.orders) return [];
+    return dailySheet.orders.filter(o => (o.session || 'morning') === 'morning');
+  }, [dailySheet?.orders]);
+
+  const afternoonOrders = React.useMemo(() => {
+    if (!dailySheet?.orders) return [];
+    return dailySheet.orders.filter(o => o.session === 'afternoon');
+  }, [dailySheet?.orders]);
+
+  const sessionOrders = React.useMemo(() => {
+    return selectedSession === 'afternoon' ? afternoonOrders : morningOrders;
+  }, [selectedSession, morningOrders, afternoonOrders]);
+
   // Lưu sheet: Ghi vào IndexedDB cục bộ + Đẩy lên Firebase Realtime
   const persistSheet = useCallback(async (newSheet: DailySheet) => {
-    setDailySheet(newSheet);
+    // Luôn đảm bảo morningDishIds và afternoonDishIds tồn tại
+    const normalizedSheet: DailySheet = {
+      ...newSheet,
+      dishIds: newSheet.dishIds || newSheet.morningDishIds || [],
+      morningDishIds: newSheet.morningDishIds ?? newSheet.dishIds ?? [],
+      afternoonDishIds: newSheet.afternoonDishIds ?? newSheet.dishIds ?? [],
+      orders: newSheet.orders || [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    setDailySheet(normalizedSheet);
     // 1. Lưu ngay vào IndexedDB cục bộ (Bảo đảm an toàn offline)
-    await saveDailySheetToDB(newSheet);
+    await saveDailySheetToDB(normalizedSheet);
     await refreshSalesDays();
 
     // 2. Đẩy lên Firebase Firestore Realtime cho các thiết bị khác cùng cập nhật
-    await pushDailySheetToFirestore(newSheet);
+    await pushDailySheetToFirestore(normalizedSheet);
   }, [refreshSalesDays]);
 
   // Thêm dòng đơn hàng mới
   const addOrderRow = (data: Partial<OrderRow>) => {
     if (!dailySheet) return;
 
-    const newStt = (dailySheet.orders.length > 0)
-      ? Math.max(...dailySheet.orders.map(o => o.stt || 0)) + 1
+    const rowSession: MenuSession = data.session || selectedSession;
+    const sameSessionOrders = (dailySheet.orders || []).filter(
+      o => (o.session || 'morning') === rowSession
+    );
+
+    const newStt = sameSessionOrders.length > 0
+      ? Math.max(...sameSessionOrders.map(o => o.stt || 0)) + 1
       : 1;
 
     const newRow: OrderRow = {
-      id: `row-${Date.now()}`,
-      stt: newStt,
+      id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      stt: data.stt || newStt,
+      session: rowSession,
       customerName: data.customerName || '',
       roomOrAddress: data.roomOrAddress || '',
       phone: data.phone || '',
@@ -174,6 +261,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       extraNote: data.extraNote || '',
       status: data.status || 'pending',
       hasCheckmark: false,
+      isDelivered: !!data.isDelivered,
       createdAt: new Date().toISOString(),
     };
 
@@ -255,9 +343,19 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     // 2. Đẩy Firebase Realtime
     await pushDishesToFirestore(updated);
 
-    if (dailySheet && !dailySheet.dishIds.includes(dish.id)) {
-      const newDishIds = [...dailySheet.dishIds, dish.id];
-      persistSheet({ ...dailySheet, dishIds: newDishIds });
+    if (dailySheet && !exists) {
+      const currentMorning = dailySheet.morningDishIds ?? dailySheet.dishIds ?? [];
+      const currentAfternoon = dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? [];
+
+      const newMorning = selectedSession === 'morning' ? [...currentMorning, dish.id] : currentMorning;
+      const newAfternoon = selectedSession === 'afternoon' ? [...currentAfternoon, dish.id] : currentAfternoon;
+
+      persistSheet({
+        ...dailySheet,
+        morningDishIds: newMorning,
+        afternoonDishIds: newAfternoon,
+        dishIds: newMorning,
+      });
     }
   };
 
@@ -269,30 +367,83 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     // 2. Đẩy Firebase Realtime
     await pushDishesToFirestore(updated);
 
-    const currentDishIds = dailySheet?.dishIds || [];
-    if (dailySheet && currentDishIds.includes(dishId)) {
+    if (dailySheet) {
+      const currentMorning = dailySheet.morningDishIds ?? dailySheet.dishIds ?? [];
+      const currentAfternoon = dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? [];
       persistSheet({
         ...dailySheet,
-        dishIds: currentDishIds.filter(id => id !== dishId),
+        dishIds: (dailySheet.dishIds || []).filter(id => id !== dishId),
+        morningDishIds: currentMorning.filter(id => id !== dishId),
+        afternoonDishIds: currentAfternoon.filter(id => id !== dishId),
       });
     }
   };
 
-  const toggleDishInDailyMenu = async (dishId: string) => {
+  const toggleDishInDailyMenu = async (dishId: string, session?: MenuSession) => {
     if (!dailySheet) return;
-    const currentIds = dailySheet.dishIds || [];
-    let newIds: string[];
-    if (currentIds.includes(dishId)) {
-      newIds = currentIds.filter(id => id !== dishId);
+    const targetSession = session || selectedSession;
+
+    const currentMorning = dailySheet.morningDishIds ?? dailySheet.dishIds ?? [];
+    const currentAfternoon = dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? [];
+
+    let newMorning = [...currentMorning];
+    let newAfternoon = [...currentAfternoon];
+
+    if (targetSession === 'morning') {
+      if (newMorning.includes(dishId)) {
+        newMorning = newMorning.filter(id => id !== dishId);
+      } else {
+        newMorning = [...newMorning, dishId];
+      }
     } else {
-      newIds = [...currentIds, dishId];
+      if (newAfternoon.includes(dishId)) {
+        newAfternoon = newAfternoon.filter(id => id !== dishId);
+      } else {
+        newAfternoon = [...newAfternoon, dishId];
+      }
     }
-    persistSheet({ ...dailySheet, dishIds: newIds });
+
+    persistSheet({
+      ...dailySheet,
+      morningDishIds: newMorning,
+      afternoonDishIds: newAfternoon,
+      dishIds: newMorning,
+    });
   };
 
-  const setDailyMenuColumns = async (dishIds: string[]) => {
+  const setDailyMenuColumns = async (dishIds: string[], session?: MenuSession) => {
     if (!dailySheet) return;
-    persistSheet({ ...dailySheet, dishIds });
+    const targetSession = session || selectedSession;
+
+    const currentMorning = dailySheet.morningDishIds ?? dailySheet.dishIds ?? [];
+    const currentAfternoon = dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? [];
+
+    const newMorning = targetSession === 'morning' ? dishIds : currentMorning;
+    const newAfternoon = targetSession === 'afternoon' ? dishIds : currentAfternoon;
+
+    persistSheet({
+      ...dailySheet,
+      morningDishIds: newMorning,
+      afternoonDishIds: newAfternoon,
+      dishIds: newMorning,
+    });
+  };
+
+  const copyMenuSession = async (from: MenuSession, to: MenuSession) => {
+    if (!dailySheet) return;
+    const sourceIds = from === 'morning'
+      ? (dailySheet.morningDishIds ?? dailySheet.dishIds ?? [])
+      : (dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? []);
+
+    const newMorning = to === 'morning' ? [...sourceIds] : (dailySheet.morningDishIds ?? dailySheet.dishIds ?? []);
+    const newAfternoon = to === 'afternoon' ? [...sourceIds] : (dailySheet.afternoonDishIds ?? dailySheet.dishIds ?? []);
+
+    persistSheet({
+      ...dailySheet,
+      morningDishIds: newMorning,
+      afternoonDishIds: newAfternoon,
+      dishIds: newMorning,
+    });
   };
 
   const deleteDailySheet = useCallback(async (dateStr: string) => {
@@ -327,6 +478,8 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     persistSheet({
       date: selectedDate,
       dishIds: defaultIds,
+      morningDishIds: defaultIds,
+      afternoonDishIds: defaultIds,
       orders: INITIAL_ORDERS,
       updatedAt: new Date().toISOString(),
     });
@@ -337,9 +490,16 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       value={{
         selectedDate,
         setSelectedDate,
+        selectedSession,
+        setSelectedSession,
         dishes,
         dailySheet,
         activeDishes,
+        morningDishes,
+        afternoonDishes,
+        sessionOrders,
+        morningOrders,
+        afternoonOrders,
         isLoading,
         activeSalesDays,
         savedDaysCount: activeSalesDays.length,
@@ -353,6 +513,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         deleteDish,
         toggleDishInDailyMenu,
         setDailyMenuColumns,
+        copyMenuSession,
         deleteDailySheet,
         resetToPhotoData,
         refreshSalesDays,

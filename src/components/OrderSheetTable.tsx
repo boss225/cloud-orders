@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useOrder } from '@/context/OrderContext';
 import { useAuth } from '@/context/AuthContext';
 import { Dish, OrderRow } from '@/types';
@@ -13,7 +14,10 @@ import {
   Plus, 
   Minus,
   X,
-  Lock
+  Lock,
+  Sun,
+  Moon,
+  UtensilsCrossed
 } from 'lucide-react';
 
 interface Props {
@@ -25,6 +29,11 @@ export default function OrderSheetTable({ onEditRow }: Props) {
   const { 
     dailySheet, 
     activeDishes, 
+    sessionOrders,
+    morningOrders,
+    afternoonOrders,
+    selectedSession,
+    setSelectedSession,
     quickChangeCell, 
     toggleRowDelivered,
     deleteOrderRow 
@@ -42,8 +51,8 @@ export default function OrderSheetTable({ onEditRow }: Props) {
     );
   }
 
-  // Lọc danh sách đơn
-  const filteredOrders = dailySheet.orders.filter(order => {
+  // Lọc danh sách đơn thuộc ca hiện tại
+  const filteredOrders = sessionOrders.filter(order => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -54,13 +63,13 @@ export default function OrderSheetTable({ onEditRow }: Props) {
     );
   });
 
-  // Tính tổng số lượng từng cột cho bếp
+  // Tính tổng số lượng từng cột cho ca hiện tại
   const columnTotals: Record<string, number> = {};
   activeDishes.forEach(d => {
     columnTotals[d.id] = 0;
   });
 
-  dailySheet.orders.forEach(order => {
+  sessionOrders.forEach(order => {
     Object.entries(order.items).forEach(([dishId, qty]) => {
       if (qty > 0 && columnTotals[dishId] !== undefined) {
         columnTotals[dishId] += qty;
@@ -68,34 +77,97 @@ export default function OrderSheetTable({ onEditRow }: Props) {
     });
   });
 
+  const isMorning = selectedSession === 'morning';
+
   return (
     <div className="flex-1 flex flex-col min-h-0 space-y-2.5">
-      {/* Search Bar - Compact & Clean for iPad */}
-      <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-2xl border border-slate-200 shadow-xs shrink-0">
-        <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Tìm theo địa chỉ hoặc tên khách..."
-          className="w-full text-xs sm:text-sm font-medium bg-transparent outline-none placeholder:text-slate-400"
-        />
-        {searchTerm && (
+      {/* Top Bar: Session Switcher (Ca Sáng / Ca Chiều) & Search */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
+        {/* Session Switcher Tabs (Ca Sáng / Ca Chiều) */}
+        <div className="flex items-center bg-slate-200/80 rounded-2xl border border-slate-300/80 shadow-xs">
           <button
-            onClick={() => setSearchTerm('')}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            type="button"
+            onClick={() => setSelectedSession('morning')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 p-1 rounded-xl text-xs sm:text-sm font-black transition-all ${
+              isMorning
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-orange-500/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
           >
-            <X className="w-3.5 h-3.5" />
+            <Sun className={`w-4 h-4 ${isMorning ? 'text-amber-100 animate-spin-slow' : 'text-amber-500'}`} />
+            <span>Sáng</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-black ${
+              isMorning 
+                ? 'bg-white/25 text-white' 
+                : 'bg-slate-300 text-slate-700'
+            }`}>
+              {morningOrders.length}
+            </span>
           </button>
-        )}
+
+          <button
+            type="button"
+            onClick={() => setSelectedSession('afternoon')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 p-1 rounded-xl text-xs sm:text-sm font-black transition-all ${
+              !isMorning
+                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Moon className={`w-4 h-4 ${!isMorning ? 'text-indigo-200' : 'text-indigo-500'}`} />
+            <span>Chiều</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-black ${
+              !isMorning 
+                ? 'bg-white/25 text-white' 
+                : 'bg-slate-300 text-slate-700'
+            }`}>
+              {afternoonOrders.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Search Bar & Quick Menu Config Link */}
+        <div className="flex items-center gap-2 flex-1 sm:max-w-md">
+          <div className="flex-1 flex items-center gap-2 bg-white px-3.5 py-2 rounded-2xl border border-slate-200 shadow-xs">
+            <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={`Tìm trong ${isMorning ? 'Ca Sáng' : 'Ca Chiều'} (địa chỉ, tên)...`}
+              className="w-full text-xs sm:text-sm font-medium bg-transparent outline-none placeholder:text-slate-400"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                title="Xóa tìm kiếm"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <Link
+            href="/menu"
+            className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0"
+            title={`Cài đặt món xuất hiện trong Menu ${isMorning ? 'Sáng' : 'Chiều'}`}
+          >
+            <UtensilsCrossed className="w-3.5 h-3.5 text-orange-600" />
+            <span className="hidden sm:inline">Món {isMorning ? 'Sáng' : 'Chiều'}</span>
+            <span className="text-[10px] bg-orange-100 text-orange-800 font-black px-1.5 py-0.5 rounded-full">
+              {activeDishes.length}
+            </span>
+          </Link>
+        </div>
       </div>
 
-      {/* Main Table Container: Full Height (100vh - header - input - 10px khoảng cách) */}
+      {/* Main Table Container */}
       <div 
         className="relative flex-1 min-h-0 overflow-auto rounded-2xl border border-slate-300 bg-white shadow-sm"
         style={{
-          height: 'calc(100dvh - 54px - 42px - 40px)',
-          maxHeight: 'calc(100dvh - 54px - 42px - 40px)'
+          height: 'calc(100dvh - 54px - 50px - 40px)',
+          maxHeight: 'calc(100dvh - 54px - 50px - 40px)'
         }}
       >
         <table className="w-full text-left border-collapse select-none text-xs">
@@ -114,7 +186,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                 <span className="text-[10px] text-slate-500 font-normal">Tên khách hàng</span>
               </th>
 
-              {/* Dynamic Food Columns matching photo header */}
+              {/* Dynamic Food Columns matching current session menu */}
               {activeDishes.map((dish) => (
                 <th 
                   key={dish.id} 
@@ -147,12 +219,28 @@ export default function OrderSheetTable({ onEditRow }: Props) {
             </tr>
           </thead>
 
-          {/* Table Body - Row Odd Xám Nhạt (Zebra striping), Không nền caro */}
+          {/* Table Body - Row Odd Xám Nhạt (Zebra striping) */}
           <tbody className="divide-y divide-slate-200">
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={activeDishes.length + 4} style={{height: 'calc(100dvh - 230px)'}} className="py-12 text-center text-slate-400 font-medium text-xs">
-                  Chưa có đơn hàng nào trong sheet ngày này. Bấm nút (+) để tạo đơn nhanh!
+                <td colSpan={activeDishes.length + 4} style={{height: 'calc(100dvh - 240px)'}} className="py-12 text-center text-slate-400 font-medium text-xs">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <span className="text-2xl">{isMorning ? '☀️' : '🌙'}</span>
+                    <p className="font-semibold text-slate-600">
+                      Chưa có đơn hàng nào trong {isMorning ? 'Ca Sáng' : 'Ca Chiều'} ngày này.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Bấm nút (+) ở góc dưới bên phải để tạo đơn cho {isMorning ? 'Ca Sáng' : 'Ca Chiều'}!
+                    </p>
+                    {activeDishes.length === 0 && (
+                      <Link
+                        href="/menu"
+                        className="mt-2 px-3 py-1.5 rounded-xl bg-orange-100 text-orange-800 font-bold text-xs hover:bg-orange-200 transition"
+                      >
+                        Chọn món cho Menu {isMorning ? 'Sáng' : 'Chiều'} ngay &rarr;
+                      </Link>
+                    )}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -331,9 +419,12 @@ export default function OrderSheetTable({ onEditRow }: Props) {
             <tr className="border-t-2 border-slate-300 bg-slate-100 text-slate-900 shadow-xs">
               <td colSpan={2} className="py-2.5 px-2.5 font-black text-xs uppercase tracking-wider border-r border-slate-300 bg-slate-100">
                 <div className="flex items-center justify-between">
-                  <span>Tổng:</span>
-                  <span className="text-xs text-orange-700 font-black">
-                    {dailySheet.orders.length} đơn
+                  <span className="flex items-center gap-1.5">
+                    {isMorning ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-600" />}
+                    <span>Tổng {isMorning ? 'Ca Sáng' : 'Ca Chiều'}:</span>
+                  </span>
+                  <span className={`text-xs font-black ${isMorning ? 'text-orange-700' : 'text-indigo-700'}`}>
+                    {sessionOrders.length} đơn
                   </span>
                 </div>
               </td>
@@ -348,7 +439,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                   >
                     <span className={`inline-block px-1.5 py-0.5 rounded-md text-sm font-black ${
                       total > 0 
-                        ? 'bg-orange-600 text-white shadow-xs' 
+                        ? (isMorning ? 'bg-orange-600 text-white shadow-xs' : 'bg-indigo-600 text-white shadow-xs')
                         : 'text-slate-400'
                     }`}>
                       {total}
@@ -359,7 +450,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
 
               <td colSpan={3} className="py-2.5 px-2 text-right bg-slate-100">
                 <span className="text-[11px] text-slate-500 font-semibold">
-                  Lưu (10 ngày)
+                  {isMorning ? '☀️ Ca Sáng' : '🌙 Ca Chiều'}
                 </span>
               </td>
             </tr>

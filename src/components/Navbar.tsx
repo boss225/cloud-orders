@@ -195,6 +195,11 @@ export default function Navbar({ onOpenKitchenSummary }: Props) {
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
                               {item.orderCount} đơn
+                              {(item.morningOrderCount !== undefined || item.afternoonOrderCount !== undefined) && (
+                                <span className="text-slate-400 font-normal ml-1">
+                                  (☀️{item.morningOrderCount || 0} 🌙{item.afternoonOrderCount || 0})
+                                </span>
+                              )}
                             </span>
 
                             <button

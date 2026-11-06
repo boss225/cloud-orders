@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useOrder } from "@/context/OrderContext";
 import { useAuth } from "@/context/AuthContext";
-import { Dish } from "@/types";
+import { Dish, MenuSession } from "@/types";
 import { formatCurrency, formatDateVN } from "@/lib/utils";
 import {
   UtensilsCrossed,
@@ -18,8 +18,10 @@ import {
   Save,
   X,
   Search,
-  ArrowUpDown,
   BookOpen,
+  Sun,
+  Moon,
+  Copy,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -38,26 +40,39 @@ export default function MenuManagementPage() {
     dishes = [],
     dailySheet,
     selectedDate,
+    selectedSession,
+    setSelectedSession,
     addOrUpdateDish,
     deleteDish,
     toggleDishInDailyMenu,
     setDailyMenuColumns,
+    copyMenuSession,
   } = useOrder();
   const { isAdmin, isLoggedIn, openLoginModal } = useAuth();
 
+  const [activeMenuTab, setActiveMenuTab] = useState<MenuSession>(selectedSession || "morning");
+
+  // Đồng bộ tab menu khi selectedSession từ context thay đổi (ví dụ: tự động sang ca chiều sau 13h)
+  useEffect(() => {
+    if (selectedSession) {
+      setActiveMenuTab(selectedSession);
+    }
+  }, [selectedSession]);
   const [isDishModalOpen, setIsDishModalOpen] = useState(false);
   const [editingDish, setEditingDish] = useState<Dish | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Form states
+  // Form states for Add / Edit dish
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
   const [price, setPrice] = useState<number>(20000);
   const [description, setDescription] = useState("");
 
-  const activeDishIds = dailySheet?.dishIds || [];
+  const morningDishIds = dailySheet?.morningDishIds ?? dailySheet?.dishIds ?? [];
+  const afternoonDishIds = dailySheet?.afternoonDishIds ?? dailySheet?.dishIds ?? [];
+  const currentTabDishIds = activeMenuTab === "morning" ? morningDishIds : afternoonDishIds;
 
   // Filter dishes by search term (name & shortName, accent-insensitive)
   const filteredDishes = (dishes || []).filter((dish) => {
@@ -115,25 +130,47 @@ export default function MenuManagementPage() {
     setIsDishModalOpen(false);
   };
 
-  const handleSelectAllToday = () => {
+  const handleSelectAllInTab = () => {
     if (searchQuery.trim()) {
       const filteredIds = filteredDishes.map((d) => d.id);
-      const combined = Array.from(new Set([...activeDishIds, ...filteredIds]));
-      setDailyMenuColumns(combined);
+      const combined = Array.from(new Set([...currentTabDishIds, ...filteredIds]));
+      setDailyMenuColumns(combined, activeMenuTab);
     } else {
       const allIds = dishes.map((d) => d.id);
-      setDailyMenuColumns(allIds);
+      setDailyMenuColumns(allIds, activeMenuTab);
     }
   };
 
-  const handleDeselectAllToday = () => {
+  const handleDeselectAllInTab = () => {
     if (searchQuery.trim()) {
       const filteredIdSet = new Set(filteredDishes.map((d) => d.id));
-      setDailyMenuColumns(activeDishIds.filter((id) => !filteredIdSet.has(id)));
+      setDailyMenuColumns(currentTabDishIds.filter((id) => !filteredIdSet.has(id)), activeMenuTab);
     } else {
-      setDailyMenuColumns([]);
+      setDailyMenuColumns([], activeMenuTab);
     }
   };
+
+  const handleCopyMenu = () => {
+    const fromTab = activeMenuTab === "morning" ? "afternoon" : "morning";
+    const fromName = fromTab === "morning" ? "Sáng" : "Chiều";
+    const toName = activeMenuTab === "morning" ? "Sáng" : "Chiều";
+    if (
+      confirm(
+        `Bạn có muốn sao chép toàn bộ món từ ${fromName} sang ${toName} ngày ${formatDateVN(
+          selectedDate
+        )}?`
+      )
+    ) {
+      copyMenuSession(fromTab, activeMenuTab);
+    }
+  };
+
+  const handleSwitchTab = (tab: MenuSession) => {
+    setActiveMenuTab(tab);
+    setSelectedSession(tab);
+  };
+
+  const isMorningTab = activeMenuTab === "morning";
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -145,11 +182,12 @@ export default function MenuManagementPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900">
-              Quản Lý Menu & Món Trong Ngày
+              Cài Đặt Menu Món Trong Ngày
             </h1>
             <p className="text-xs text-slate-500">
-              Chọn các món xuất hiện làm cột trên Sheet Order ngày{" "}
-              <span className="font-semibold text-orange-600">
+              Cấu hình 2 menu riêng biệt: <strong className="text-amber-600">Menu Sáng</strong> và{" "}
+              <strong className="text-indigo-600">Menu Chiều</strong> ngày{" "}
+              <span className="font-semibold text-slate-800">
                 {formatDateVN(selectedDate)}
               </span>
             </p>
@@ -176,19 +214,74 @@ export default function MenuManagementPage() {
           ) : null}
         </div>
       </div>
+
       {/* Daily Selection Control Section */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        {/* BIG TABS: Switch between Menu Sáng & Menu Chiều */}
+        <div className="p-1.5 bg-slate-100 rounded-2xl border border-slate-200/90 flex flex-col sm:flex-row gap-2">
+          <button
+            type="button"
+            onClick={() => handleSwitchTab("morning")}
+            className={`flex-1 py-3 px-4 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2.5 ${
+              isMorningTab
+                ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-orange-500/25"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/70"
+            }`}
+          >
+            <Sun className={`w-5 h-5 ${isMorningTab ? "text-amber-100 animate-spin-slow" : "text-amber-500"}`} />
+            <span>☀️ Menu Sáng</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                isMorningTab ? "bg-white/25 text-white" : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {morningDishIds.length} món
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSwitchTab("afternoon")}
+            className={`flex-1 py-3 px-4 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2.5 ${
+              !isMorningTab
+                ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/25"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/70"
+            }`}
+          >
+            <Moon className={`w-5 h-5 ${!isMorningTab ? "text-indigo-200" : "text-indigo-500"}`} />
+            <span>🌙 Menu Chiều</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                !isMorningTab ? "bg-white/25 text-white" : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {afternoonDishIds.length} món
+            </span>
+          </button>
+        </div>
+
+        {/* Toolbar of the active tab */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 pt-1">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>Món ngày: {formatDateVN(selectedDate)}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 font-bold">
-                {activeDishIds.length} món được chọn
+              <span className="flex items-center gap-1.5">
+                {isMorningTab ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+                <span>
+                  {isMorningTab ? "Menu Sáng" : "Menu Chiều"} ({formatDateVN(selectedDate)})
+                </span>
+              </span>
+              <span
+                className={`text-xs px-2.5 py-0.5 rounded-full font-black ${
+                  isMorningTab
+                    ? "bg-amber-100 text-amber-800 border border-amber-300"
+                    : "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                }`}
+              >
+                {currentTabDishIds.length} món mở bán
               </span>
             </h2>
-            <p className="text-xs text-slate-500">
-              Bấm vào từng món để hiển thị trên Order của
-              ngày.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Chạm vào từng món để bật hoặc tắt món xuất hiện trên cột đơn {isMorningTab ? "Sáng" : "Chiều"}.
             </p>
           </div>
 
@@ -215,39 +308,51 @@ export default function MenuManagementPage() {
               )}
             </div>
 
+            {/* Quick Copy button between Sáng and Chiều */}
             <button
-              onClick={isAdmin ? handleSelectAllToday : openLoginModal}
+              onClick={isAdmin ? handleCopyMenu : openLoginModal}
+              disabled={!isAdmin}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition flex items-center gap-1.5 ${
+                !isAdmin
+                  ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
+                  : isMorningTab
+                    ? "text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
+                    : "text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+              }`}
+              title={
+                !isAdmin
+                  ? "Cần đăng nhập Admin"
+                  : isMorningTab
+                    ? "Sao chép danh sách món từ Chiều sang Sáng"
+                    : "Sao chép danh sách món từ Sáng sang Chiều"
+              }
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>{isMorningTab ? "Lấy từ Chiều" : "Lấy từ Sáng"}</span>
+            </button>
+
+            <button
+              onClick={isAdmin ? handleSelectAllInTab : openLoginModal}
               disabled={!isAdmin}
               className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition ${
                 !isAdmin
                   ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
                   : "text-slate-700 bg-slate-100 hover:bg-slate-200"
               }`}
-              title={
-                !isAdmin
-                  ? "Cần đăng nhập Admin để chọn tất cả"
-                  : searchQuery.trim()
-                  ? "Chọn tất cả món đang tìm kiếm"
-                  : "Chọn tất cả món cho ngày này"
-              }
+              title="Chọn tất cả món cho ngày này"
             >
-              Chọn tất cả món
+              Chọn tất cả
             </button>
+
             <button
-              onClick={isAdmin ? handleDeselectAllToday : openLoginModal}
+              onClick={isAdmin ? handleDeselectAllInTab : openLoginModal}
               disabled={!isAdmin}
               className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition ${
                 !isAdmin
                   ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
                   : "text-slate-700 bg-slate-100 hover:bg-rose-50 hover:text-rose-600"
               }`}
-              title={
-                !isAdmin
-                  ? "Cần đăng nhập Admin để bỏ chọn"
-                  : searchQuery.trim()
-                  ? "Bỏ chọn tất cả món đang tìm kiếm"
-                  : "Bỏ chọn tất cả món"
-              }
+              title="Bỏ chọn tất cả món cho ngày này"
             >
               Bỏ chọn tất cả
             </button>
@@ -271,115 +376,152 @@ export default function MenuManagementPage() {
             </div>
           ) : (
             filteredDishes.map((dish) => {
-              const isSelectedForToday = activeDishIds.includes(dish.id);
+              const isSelectedInActiveTab = currentTabDishIds.includes(dish.id);
+              const isInMorning = morningDishIds.includes(dish.id);
+              const isInAfternoon = afternoonDishIds.includes(dish.id);
 
-            return (
-              <div
-                key={dish.id}
-                onClick={() => {
-                  if (!isAdmin) {
-                    openLoginModal();
-                    return;
+              return (
+                <div
+                  key={dish.id}
+                  onClick={() => {
+                    if (!isAdmin) {
+                      openLoginModal();
+                      return;
+                    }
+                    toggleDishInDailyMenu(dish.id, activeMenuTab);
+                  }}
+                  className={`relative p-4 rounded-2xl border transition-all ${
+                    !isAdmin ? "cursor-not-allowed" : "cursor-pointer"
+                  } ${
+                    isSelectedInActiveTab
+                      ? isMorningTab
+                        ? "bg-amber-50/70 border-amber-400 ring-2 ring-amber-400/40 shadow-xs"
+                        : "bg-indigo-50/70 border-indigo-400 ring-2 ring-indigo-400/40 shadow-xs"
+                      : "bg-white border-slate-200 opacity-60 hover:opacity-100"
+                  }`}
+                  title={
+                    !isAdmin
+                      ? "Vui lòng đăng nhập Admin để bật/tắt món"
+                      : `Bấm để ${isSelectedInActiveTab ? "tắt" : "bật"} món "${dish.name}" trong ${isMorningTab ? "Sáng" : "Chiều"}`
                   }
-                  toggleDishInDailyMenu(dish.id);
-                }}
-                className={`relative p-4 rounded-2xl border transition-all ${
-                  !isAdmin ? "cursor-not-allowed" : "cursor-pointer"
-                } ${
-                  isSelectedForToday
-                    ? "bg-amber-50/60 border-amber-300 ring-2 ring-amber-400/30 shadow-xs"
-                    : "bg-white border-slate-200 opacity-60 hover:opacity-100"
-                }`}
-                title={
-                  !isAdmin
-                    ? "Vui lòng đăng nhập Admin để bật/tắt món"
-                    : undefined
-                }
-              >
-                {/* Header with Short Name pill */}
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-xl bg-orange-500 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                      {dish.shortName}
-                    </span>
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900 line-clamp-1">
-                        {dish.name}
-                      </h3>
-                      <span className="text-xs font-semibold text-orange-600">
-                        {formatCurrency(dish.price || 0)}
+                >
+                  {/* Header with Short Name pill */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-8 h-8 rounded-xl text-white font-black text-sm flex items-center justify-center shadow-xs ${
+                        isMorningTab ? 'bg-orange-500' : 'bg-indigo-600'
+                      }`}>
+                        {dish.shortName}
                       </span>
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-900 line-clamp-1">
+                          {dish.name}
+                        </h3>
+                        <span className="text-xs font-semibold text-orange-600">
+                          {formatCurrency(dish.price || 0)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {isSelectedInActiveTab ? (
+                        <CheckCircle2 className={`w-5 h-5 flex-shrink-0 ${
+                          isMorningTab ? 'text-amber-600' : 'text-indigo-600'
+                        }`} />
+                      ) : (
+                        <Circle className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    {isSelectedForToday ? (
-                      <CheckCircle2 className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  {/* Multi-Shift Indicator Badges: Hiển thị món này đang bán ca nào */}
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                        isInMorning
+                          ? "bg-amber-100 text-amber-800 border border-amber-300"
+                          : "bg-slate-100 text-slate-400 opacity-50"
+                      }`}
+                    >
+                      <span>☀️ Sáng</span>
+                      {isInMorning && <span>✓</span>}
+                    </span>
+
+                    <span
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                        isInAfternoon
+                          ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                          : "bg-slate-100 text-slate-400 opacity-50"
+                      }`}
+                    >
+                      <span>🌙 Chiều</span>
+                      {isInAfternoon && <span>✓</span>}
+                    </span>
+                  </div>
+
+                  {dish.description && (
+                    <p className="text-[11px] text-slate-500 line-clamp-2 mb-2">
+                      {dish.description}
+                    </p>
+                  )}
+
+                  {/* Status bar */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                    <span
+                      className={`font-semibold ${
+                        isSelectedInActiveTab 
+                          ? (isMorningTab ? "text-amber-700" : "text-indigo-700") 
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {isSelectedInActiveTab
+                        ? `✓ Mở bán ${isMorningTab ? "Sáng" : "Chiều"}`
+                        : `✕ Tạm ẩn ${isMorningTab ? "Sáng" : "Chiều"}`}
+                    </span>
+
+                    {isAdmin ? (
+                      <div
+                        className="flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => handleOpenEdit(dish)}
+                          className="p-1 rounded text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
+                          title="Sửa thông tin món"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `Bạn có chắc muốn xóa món "${dish.name}" khỏi hệ thống?`
+                              )
+                            ) {
+                              deleteDish(dish.id);
+                            }
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                          title="Xóa món"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ) : (
-                      <Circle className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                      <div
+                        className="flex items-center gap-1 opacity-25 cursor-not-allowed"
+                        title="Cần đăng nhập Admin để sửa/xóa"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                        <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
                     )}
                   </div>
                 </div>
-
-                {dish.description && (
-                  <p className="text-[11px] text-slate-500 line-clamp-2 mb-2">
-                    {dish.description}
-                  </p>
-                )}
-
-                {/* Status bar */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                  <span
-                    className={`font-semibold ${isSelectedForToday ? "text-amber-700" : "text-slate-400"}`}
-                  >
-                    {isSelectedForToday
-                      ? "✓ Đang mở bán hôm nay"
-                      : "✕ Tạm ẩn ngày này"}
-                  </span>
-
-                  {isAdmin ? (
-                    <div
-                      className="flex items-center gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => handleOpenEdit(dish)}
-                        className="p-1 rounded text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
-                        title="Sửa thông tin món"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `Bạn có chắc muốn xóa món "${dish.name}" khỏi hệ thống?`,
-                            )
-                          ) {
-                            deleteDish(dish.id);
-                          }
-                        }}
-                        className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                        title="Xóa món"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      className="flex items-center gap-1 opacity-25 cursor-not-allowed"
-                      title="Cần đăng nhập Admin để sửa/xóa"
-                    >
-                      <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                      <Trash2 className="w-3.5 h-3.5 text-slate-400" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+              );
+            })
+          )}
+        </div>
       </div>
 
       {/* Dish Add/Edit Modal */}

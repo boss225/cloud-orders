@@ -79,7 +79,17 @@ export async function getDailySheet(dateStr: string, activeDishIds: string[]): P
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const data = docSnap.data() as DailySheet;
-        return data;
+        const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map(d => d.id);
+        return {
+          ...data,
+          dishIds: data.dishIds || defaultIds,
+          morningDishIds: data.morningDishIds ?? data.dishIds ?? defaultIds,
+          afternoonDishIds: data.afternoonDishIds ?? data.dishIds ?? defaultIds,
+          orders: (data.orders || []).map(o => ({
+            ...o,
+            session: o.session || 'morning',
+          })),
+        };
       }
     } catch (e) {
       console.warn('Firestore fetch daily sheet error, fallback to local', e);
@@ -91,7 +101,18 @@ export async function getDailySheet(dateStr: string, activeDishIds: string[]): P
     const local = localStorage.getItem(`${STORAGE_PREFIX}sheet_${dateStr}`);
     if (local) {
       try {
-        return JSON.parse(local);
+        const parsed = JSON.parse(local);
+        const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map(d => d.id);
+        return {
+          ...parsed,
+          dishIds: parsed.dishIds || defaultIds,
+          morningDishIds: parsed.morningDishIds ?? parsed.dishIds ?? defaultIds,
+          afternoonDishIds: parsed.afternoonDishIds ?? parsed.dishIds ?? defaultIds,
+          orders: (parsed.orders || []).map((o: any) => ({
+            ...o,
+            session: o.session || 'morning',
+          })),
+        };
       } catch (e) {
         console.error('Error parse local sheet', e);
       }
@@ -99,9 +120,12 @@ export async function getDailySheet(dateStr: string, activeDishIds: string[]): P
   }
 
   // Khởi tạo sheet mặc định cho ngày
+  const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map(d => d.id);
   const defaultSheet: DailySheet = {
     date: dateStr,
-    dishIds: activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map(d => d.id),
+    dishIds: defaultIds,
+    morningDishIds: defaultIds,
+    afternoonDishIds: defaultIds,
     orders: INITIAL_ORDERS,
     updatedAt: new Date().toISOString(),
   };

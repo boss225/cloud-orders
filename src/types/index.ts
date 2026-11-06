@@ -1,4 +1,5 @@
 export type UserRole = 'admin' | 'user';
+export type MenuSession = 'morning' | 'afternoon';
 
 export interface UserProfile {
   phone: string;
@@ -21,6 +22,7 @@ export interface Dish {
 export interface OrderRow {
   id: string;
   stt: number;
+  session?: MenuSession;    // 'morning' (ca sáng) hoặc 'afternoon' (ca chiều), mặc định 'morning'
   customerName: string;     // Tên khách hàng (ví dụ: Oanh, Hoài An, Hương Ly, Nga, Cô Nhân...)
   roomOrAddress: string;    // Phòng / Tầng / Địa chỉ (ví dụ: 9.10.15, 1.19.2, lla 8, CTQ, 12.5...)
   phone?: string;
@@ -40,7 +42,9 @@ export interface OrderRow {
 
 export interface DailySheet {
   date: string;             // YYYY-MM-DD
-  dishIds: string[];        // Danh sách ID món hiển thị làm các cột của ngày đó
+  dishIds: string[];        // Danh sách ID món chung / fallback
+  morningDishIds?: string[];   // Danh sách ID món cho Ca Sáng
+  afternoonDishIds?: string[]; // Danh sách ID món cho Ca Chiều
   orders: OrderRow[];
   notes?: string;
   updatedAt: string;
