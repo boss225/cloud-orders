@@ -17,11 +17,20 @@ import {
   Lock,
   Save,
   X,
-  Sparkles,
+  Search,
   ArrowUpDown,
   BookOpen,
 } from "lucide-react";
 import Link from "next/link";
+
+function removeVietnameseTones(str: string): string {
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
 
 export default function MenuManagementPage() {
   const {
@@ -32,12 +41,14 @@ export default function MenuManagementPage() {
     deleteDish,
     toggleDishInDailyMenu,
     setDailyMenuColumns,
-    resetToPhotoData,
   } = useOrder();
   const { isAdmin, isLoggedIn, openLoginModal } = useAuth();
 
   const [isDishModalOpen, setIsDishModalOpen] = useState(false);
   const [editingDish, setEditingDish] = useState<Dish | null>(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Form states
   const [name, setName] = useState("");
@@ -46,6 +57,25 @@ export default function MenuManagementPage() {
   const [description, setDescription] = useState("");
 
   const activeDishIds = dailySheet?.dishIds || [];
+
+  // Filter dishes by search term (name & shortName, accent-insensitive)
+  const filteredDishes = dishes.filter((dish) => {
+    if (!searchQuery.trim()) return true;
+    const term = searchQuery.trim().toLowerCase();
+    const normalizedTerm = removeVietnameseTones(term);
+
+    const dishName = dish.name.toLowerCase();
+    const dishShort = dish.shortName.toLowerCase();
+    const normalizedName = removeVietnameseTones(dishName);
+    const normalizedShort = removeVietnameseTones(dishShort);
+
+    return (
+      dishName.includes(term) ||
+      dishShort.includes(term) ||
+      normalizedName.includes(normalizedTerm) ||
+      normalizedShort.includes(normalizedTerm)
+    );
+  });
 
   const handleOpenAdd = () => {
     setEditingDish(null);
@@ -84,8 +114,23 @@ export default function MenuManagementPage() {
   };
 
   const handleSelectAllToday = () => {
-    const allIds = dishes.map((d) => d.id);
-    setDailyMenuColumns(allIds);
+    if (searchQuery.trim()) {
+      const filteredIds = filteredDishes.map((d) => d.id);
+      const combined = Array.from(new Set([...activeDishIds, ...filteredIds]));
+      setDailyMenuColumns(combined);
+    } else {
+      const allIds = dishes.map((d) => d.id);
+      setDailyMenuColumns(allIds);
+    }
+  };
+
+  const handleDeselectAllToday = () => {
+    if (searchQuery.trim()) {
+      const filteredIdSet = new Set(filteredDishes.map((d) => d.id));
+      setDailyMenuColumns(activeDishIds.filter((id) => !filteredIdSet.has(id)));
+    } else {
+      setDailyMenuColumns([]);
+    }
   };
 
   return (
@@ -145,7 +190,29 @@ export default function MenuManagementPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {/* Search Input */}
+            <div className="relative flex-1 sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm món theo tên..."
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-orange-500 focus:ring-1 focus:ring-orange-200 rounded-xl outline-none transition"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full"
+                  title="Xóa tìm kiếm"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
             <button
               onClick={isAdmin ? handleSelectAllToday : openLoginModal}
               disabled={!isAdmin}
@@ -157,47 +224,52 @@ export default function MenuManagementPage() {
               title={
                 !isAdmin
                   ? "Cần đăng nhập Admin để chọn tất cả"
+                  : searchQuery.trim()
+                  ? "Chọn tất cả món đang tìm kiếm"
                   : "Chọn tất cả món cho ngày này"
               }
             >
               Chọn tất cả món
             </button>
             <button
-              onClick={
-                isAdmin
-                  ? () => {
-                      if (
-                        confirm(
-                          "Khôi phục danh sách món và đơn theo đúng ảnh sổ tay mẫu?",
-                        )
-                      ) {
-                        resetToPhotoData();
-                      }
-                    }
-                  : openLoginModal
-              }
+              onClick={isAdmin ? handleDeselectAllToday : openLoginModal}
               disabled={!isAdmin}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition flex items-center gap-1 ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition ${
                 !isAdmin
-                  ? "opacity-40 cursor-not-allowed bg-orange-50 text-orange-300"
-                  : "text-orange-700 bg-orange-50 hover:bg-orange-100"
+                  ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
+                  : "text-slate-700 bg-slate-100 hover:bg-rose-50 hover:text-rose-600"
               }`}
               title={
                 !isAdmin
-                  ? "Cần đăng nhập Admin để nạp dữ liệu mẫu"
-                  : "Nạp dữ liệu mẫu"
+                  ? "Cần đăng nhập Admin để bỏ chọn"
+                  : searchQuery.trim()
+                  ? "Bỏ chọn tất cả món đang tìm kiếm"
+                  : "Bỏ chọn tất cả món"
               }
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Nạp mẫu theo sổ tay gốc</span>
+              Bỏ chọn tất cả
             </button>
           </div>
         </div>
 
         {/* Dishes Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
-          {dishes.map((dish) => {
-            const isSelectedForToday = activeDishIds.includes(dish.id);
+          {filteredDishes.length === 0 ? (
+            <div className="col-span-full py-12 text-center text-slate-400">
+              <p className="text-sm font-medium">
+                Không tìm thấy món nào phù hợp với &quot;{searchQuery}&quot;
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="mt-2 text-xs font-semibold text-orange-600 hover:underline"
+              >
+                Xóa tìm kiếm
+              </button>
+            </div>
+          ) : (
+            filteredDishes.map((dish) => {
+              const isSelectedForToday = activeDishIds.includes(dish.id);
 
             return (
               <div
@@ -303,7 +375,7 @@ export default function MenuManagementPage() {
                 </div>
               </div>
             );
-          })}
+          }))}
         </div>
       </div>
 

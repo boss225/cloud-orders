@@ -57,7 +57,7 @@ export default function HomePage() {
       />
 
       {/* Floating Action Button (FAB) at bottom-right for iPad quick order */}
-      <div className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-40">
+      <div className="fixed bottom-5 right-8 z-40">
         <button
           onClick={handleAddNew}
           disabled={!isAdmin}

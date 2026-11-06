@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useOrder } from '@/context/OrderContext';
 import { useAuth } from '@/context/AuthContext';
 import { Dish, OrderRow } from '@/types';
+import { formatCurrency } from '@/lib/utils';
 import { 
   Check, 
   Trash2, 
@@ -117,14 +118,15 @@ export default function OrderSheetTable({ onEditRow }: Props) {
               {activeDishes.map((dish) => (
                 <th 
                   key={dish.id} 
-                  className="py-2 px-1 text-center min-w-[54px] sm:min-w-[58px] border-r border-slate-300 bg-slate-100"
+                  className="py-2 px-1 text-center min-w-[56px] sm:min-w-[62px] border-r border-slate-300 bg-slate-100"
+                  title={`${dish.name} - ${formatCurrency(dish.price || 0)}`}
                 >
                   <div className="flex flex-col items-center justify-center">
                     <span className="text-base sm:text-lg font-black text-red-700 leading-none">
                       {dish.shortName}
                     </span>
-                    <span className="text-[9px] text-slate-500 font-medium truncate max-w-[55px] mt-0.5">
-                      {dish.name}
+                    <span className="text-[10px] text-slate-600 font-bold whitespace-nowrap mt-0.5">
+                      {formatCurrency(dish.price || 0)}
                     </span>
                   </div>
                 </th>
