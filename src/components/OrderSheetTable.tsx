@@ -421,7 +421,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     {isMorning ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-600" />}
-                    <span>Tổng {isMorning ? 'Ca Sáng' : 'Ca Chiều'}:</span>
+                    <span>Tổng:</span>
                   </span>
                   <span className={`text-xs font-black ${isMorning ? 'text-orange-700' : 'text-indigo-700'}`}>
                     {sessionOrders.length} đơn

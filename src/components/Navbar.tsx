@@ -85,11 +85,6 @@ export default function Navbar({ onOpenKitchenSummary }: Props) {
             >
               <UtensilsCrossed className="w-3.5 h-3.5" />
               <span>Menu</span>
-              {isAdmin && (
-                <span className="text-[9px] bg-amber-500 text-white font-bold px-1 py-0.2 rounded">
-                  Admin
-                </span>
-              )}
             </Link>
           </nav>
         </div>

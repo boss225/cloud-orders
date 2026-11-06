@@ -20,13 +20,13 @@ const FLOORS = [
 ];
 
 // 20 căn hộ mỗi tầng
-const UNITS = Array.from({ length: 20 }, (_, i) => String(i + 1));
+const UNITS = Array.from({ length: 25 }, (_, i) => String(i + 1));
 
 export default function ApartmentPickerModal({ isOpen, onClose, onSelect, currentValue }: Props) {
   // Phân tích giá trị hiện tại nếu có định dạng Tòa.Tầng.Căn (ví dụ 9.10.15)
   const initialParts = currentValue ? currentValue.split('.') : [];
   
-  const [selectedBlock, setSelectedBlock] = useState<string>(initialParts[0] || '1');
+  const [selectedBlock, setSelectedBlock] = useState<string>(initialParts[0] || '5');
   const [selectedFloor, setSelectedFloor] = useState<string>(initialParts[1] || '1');
   const [selectedUnit, setSelectedUnit] = useState<string>(initialParts[2] || '1');
 
@@ -49,7 +49,7 @@ export default function ApartmentPickerModal({ isOpen, onClose, onSelect, curren
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-sm animate-fadeIn">
       <div 
-        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[110vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
