@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#f8fafc] text-slate-900 min-h-screen font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.16s ease-out forwards;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.animate-shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+/* Custom scrollbars for iPad & touch */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

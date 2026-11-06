@@ -1,0 +1,255 @@
+import { DailySheet, Dish, OrderRow } from '@/types';
+import { INITIAL_DISHES, INITIAL_ORDERS } from './mockData';
+
+const DB_NAME = 'CloudOrderDB';
+const DB_VERSION = 1;
+
+const STORES = {
+  SHEETS: 'daily_sheets',
+  DISHES: 'dishes',
+  META: 'meta',
+};
+
+const MAX_ACTIVE_SALES_DAYS = 10;
+
+// Mở hoặc khởi tạo IndexedDB
+export function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      return reject(new Error('IndexedDB is only available in browser'));
+    }
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+
+      if (!db.objectStoreNames.contains(STORES.SHEETS)) {
+        db.createObjectStore(STORES.SHEETS, { keyPath: 'date' });
+      }
+
+      if (!db.objectStoreNames.contains(STORES.DISHES)) {
+        db.createObjectStore(STORES.DISHES, { keyPath: 'id' });
+      }
+
+      if (!db.objectStoreNames.contains(STORES.META)) {
+        db.createObjectStore(STORES.META, { keyPath: 'key' });
+      }
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onerror = () => {
+      reject(request.error);
+    };
+  });
+}
+
+// 1. Quản lý Món ăn (Dishes)
+export async function getStoredDishes(): Promise<Dish[]> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORES.DISHES, 'readonly');
+      const store = tx.objectStore(STORES.DISHES);
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        const dishes = req.result as Dish[];
+        if (dishes && dishes.length > 0) {
+          dishes.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+          resolve(dishes);
+        } else {
+          // Khởi tạo món mặc định lần đầu
+          saveStoredDishes(INITIAL_DISHES).then(() => resolve(INITIAL_DISHES));
+        }
+      };
+
+      req.onerror = () => {
+        resolve(INITIAL_DISHES);
+      };
+    });
+  } catch (err) {
+    console.warn('Error reading dishes from IndexedDB, using fallback', err);
+    return INITIAL_DISHES;
+  }
+}
+
+export async function saveStoredDishes(dishes: Dish[]): Promise<void> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.DISHES, 'readwrite');
+      const store = tx.objectStore(STORES.DISHES);
+
+      // Xóa toàn bộ trước khi ghi lại để đảm bảo xóa món ăn chính xác
+      store.clear();
+
+      dishes.forEach((dish) => {
+        store.put(dish);
+      });
+
+      tx.oncomplete = () => {
+        // Lưu dự phòng cả localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('cloud_order_dishes', JSON.stringify(dishes));
+        }
+        resolve();
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.error('Failed to save dishes to IndexedDB', err);
+  }
+}
+
+// 2. Quản lý Sheet Order theo ngày
+export async function getDailySheetFromDB(dateStr: string, activeDishIds: string[]): Promise<DailySheet> {
+  try {
+    const db = await openDB();
+    const sheet = await new Promise<DailySheet | null>((resolve) => {
+      const tx = db.transaction(STORES.SHEETS, 'readonly');
+      const store = tx.objectStore(STORES.SHEETS);
+      const req = store.get(dateStr);
+
+      req.onsuccess = () => {
+        resolve(req.result || null);
+      };
+
+      req.onerror = () => {
+        resolve(null);
+      };
+    });
+
+    if (sheet) {
+      return sheet;
+    }
+  } catch (err) {
+    console.warn('Error reading sheet from IndexedDB', err);
+  }
+
+  // Khởi tạo sheet mặc định nếu chưa có
+  const defaultSheet: DailySheet = {
+    date: dateStr,
+    dishIds: activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id),
+    orders: INITIAL_ORDERS,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await saveDailySheetToDB(defaultSheet);
+  return defaultSheet;
+}
+
+// Lưu sheet và tự động kiểm tra quy tắc 10 ngày phát sinh đơn
+export async function saveDailySheetToDB(sheet: DailySheet): Promise<void> {
+  try {
+    const db = await openDB();
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORES.SHEETS, 'readwrite');
+      const store = tx.objectStore(STORES.SHEETS);
+      store.put({
+        ...sheet,
+        updatedAt: new Date().toISOString(),
+      });
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    // Nếu ngày này có phát sinh đơn (orders.length > 0), thực thi dọn dẹp giữ tối đa 10 ngày
+    if (sheet.orders && sheet.orders.length > 0) {
+      await cleanupOldSalesDays(db);
+    }
+  } catch (err) {
+    console.error('Failed to save daily sheet to IndexedDB', err);
+  }
+}
+
+// Quy tắc 10 ngày có phát sinh đơn:
+// Nếu có > 10 ngày có đơn, tìm ngày cũ nhất trong số đó và xóa dữ liệu ngày cũ nhất
+export async function cleanupOldSalesDays(db: IDBDatabase): Promise<string[]> {
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORES.SHEETS, 'readwrite');
+    const store = tx.objectStore(STORES.SHEETS);
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      const allSheets = (req.result || []) as DailySheet[];
+
+      // Lọc các ngày có phát sinh đơn (có bán hàng)
+      const salesSheets = allSheets.filter((s) => s.orders && s.orders.length > 0);
+
+      // Sắp xếp ngày tăng dần (từ cũ nhất đến mới nhất)
+      salesSheets.sort((a, b) => a.date.localeCompare(b.date));
+
+      const deletedDates: string[] = [];
+
+      // Nếu số ngày có đơn vượt quá 10 ngày
+      if (salesSheets.length > MAX_ACTIVE_SALES_DAYS) {
+        const excessCount = salesSheets.length - MAX_ACTIVE_SALES_DAYS;
+        const daysToDelete = salesSheets.slice(0, excessCount);
+
+        daysToDelete.forEach((oldSheet) => {
+          store.delete(oldSheet.date);
+          deletedDates.push(oldSheet.date);
+          console.log(`[IndexedDB 10-Days Policy] Đã xóa ngày cũ nhất: ${oldSheet.date} để duy trì tối đa 10 ngày bán`);
+        });
+      }
+
+      resolve(deletedDates);
+    };
+
+    req.onerror = () => {
+      resolve([]);
+    };
+  });
+}
+
+// Lấy danh sách các ngày đang có đơn trong IndexedDB (tối đa 10 ngày)
+export async function getActiveSalesDays(): Promise<Array<{ date: string; orderCount: number; updatedAt: string }>> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORES.SHEETS, 'readonly');
+      const store = tx.objectStore(STORES.SHEETS);
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        const allSheets = (req.result || []) as DailySheet[];
+        const salesSheets = allSheets
+          .filter((s) => s.orders && s.orders.length > 0)
+          .sort((a, b) => b.date.localeCompare(a.date)) // Mới nhất lên đầu
+          .map((s) => ({
+            date: s.date,
+            orderCount: s.orders.length,
+            updatedAt: s.updatedAt,
+          }));
+
+        resolve(salesSheets.slice(0, MAX_ACTIVE_SALES_DAYS));
+      };
+
+      req.onerror = () => resolve([]);
+    });
+  } catch (e) {
+    return [];
+  }
+}
+
+// Xóa hoàn toàn 1 ngày thủ công nếu cần
+export async function deleteDailySheetFromDB(dateStr: string): Promise<void> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.SHEETS, 'readwrite');
+      const store = tx.objectStore(STORES.SHEETS);
+      store.delete(dateStr);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.error('Error deleting sheet', e);
+  }
+}

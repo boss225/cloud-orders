@@ -1,0 +1,61 @@
+'use client';
+
+import React, { useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { AuthProvider } from '@/context/AuthContext';
+import { OrderProvider } from '@/context/OrderContext';
+import Navbar from '@/components/Navbar';
+import LoginModal from '@/components/LoginModal';
+import KitchenSummaryModal from '@/components/KitchenSummaryModal';
+
+export default function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [isKitchenSummaryOpen, setIsKitchenSummaryOpen] = useState(false);
+
+  // Đăng ký Service Worker cho PWA
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.warn('PWA SW register info:', err);
+      });
+    }
+  }, []);
+
+  const isHome = pathname === '/';
+
+  return (
+    <AuthProvider>
+      <OrderProvider>
+        <div className={`flex flex-col bg-slate-50 selection:bg-orange-500 selection:text-white ${
+          isHome ? 'h-screen h-[100dvh] overflow-hidden' : 'min-h-screen'
+        }`}>
+          <Navbar 
+            onOpenKitchenSummary={() => setIsKitchenSummaryOpen(true)}
+          />
+
+          <main className={`flex-1 flex flex-col min-h-0 ${isHome ? 'overflow-hidden pb-2.5' : 'pb-16'}`}>
+            {children}
+          </main>
+
+          {/* Chỉ hiển thị footer ở các trang phụ */}
+          {!isHome && (
+            <footer className="py-6 border-t border-slate-200/80 bg-white text-center text-xs text-slate-500">
+              <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <p>
+                  <strong>Cloud Order</strong> &bull; Hệ thống Sheet Order món ăn hàng ngày
+                </p>
+              </div>
+            </footer>
+          )}
+
+          {/* Global Modals */}
+          <LoginModal />
+          <KitchenSummaryModal
+            isOpen={isKitchenSummaryOpen}
+            onClose={() => setIsKitchenSummaryOpen(false)}
+          />
+        </div>
+      </OrderProvider>
+    </AuthProvider>
+  );
+}

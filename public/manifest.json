@@ -1,0 +1,31 @@
+{
+  "name": "Cloud Order - Sổ Đơn Hàng Mỗi Ngày",
+  "short_name": "Cloud Order",
+  "description": "Ứng dụng Sheet Order món ăn hàng ngày chuyên nghiệp",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#f97316",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
