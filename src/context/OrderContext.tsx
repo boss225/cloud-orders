@@ -9,6 +9,13 @@ import {
   saveDailySheetToDB, 
   getActiveSalesDays 
 } from '@/lib/indexedDBService';
+import { 
+  pushDailySheetToFirestore, 
+  pushDishesToFirestore, 
+  subscribeRemoteDailySheet, 
+  subscribeRemoteDishes 
+} from '@/lib/firestoreSync';
+import { getFirebaseInstance } from '@/lib/firebase';
 import { getTodayString } from '@/lib/utils';
 import { INITIAL_DISHES, INITIAL_ORDERS } from '@/lib/mockData';
 
@@ -27,6 +34,7 @@ interface OrderContextType {
   isLoading: boolean;
   activeSalesDays: ActiveSalesDayInfo[];
   savedDaysCount: number;
+  isFirebaseConfigured: boolean;
   // Order actions
   addOrderRow: (data: Partial<OrderRow>) => void;
   updateOrderRow: (rowId: string, updates: Partial<OrderRow>) => void;
@@ -55,6 +63,13 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   }));
   const [isLoading, setIsLoading] = useState(true);
   const [activeSalesDays, setActiveSalesDays] = useState<ActiveSalesDayInfo[]>([]);
+  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState<boolean>(false);
+
+  // Kiểm tra trạng thái cấu hình Firebase
+  useEffect(() => {
+    const { isConfigured } = getFirebaseInstance();
+    setIsFirebaseConfigured(isConfigured);
+  }, []);
 
   // Cập nhật danh sách các ngày có phát sinh đơn (tối đa 10 ngày)
   const refreshSalesDays = useCallback(async () => {
@@ -62,26 +77,46 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     setActiveSalesDays(days);
   }, []);
 
-  // Tải danh mục món ăn (Dishes) từ IndexedDB
+  // 1. Tải danh mục món ăn (Dishes) từ IndexedDB + Lắng nghe Realtime từ Firebase
   useEffect(() => {
     getStoredDishes().then((loadedDishes) => {
       setDishes(loadedDishes);
     });
     refreshSalesDays();
+
+    // Lắng nghe realtime từ Firebase khi các máy khác đổi menu
+    const unsubscribe = subscribeRemoteDishes((remoteDishes) => {
+      setDishes(remoteDishes);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [refreshSalesDays]);
 
-  // Tải sheet order của ngày được chọn từ IndexedDB
+  // 2. Tải sheet order của ngày từ IndexedDB + Lắng nghe Realtime từ Firebase
   useEffect(() => {
     if (dishes.length === 0) return;
 
     setIsLoading(true);
     const activeIds = dishes.filter(d => d.isAvailable !== false).map(d => d.id);
 
+    // Tải trước từ IndexedDB cục bộ (cực nhanh, không cần mạng)
     getDailySheetFromDB(selectedDate, activeIds).then((sheet) => {
       setDailySheet(sheet);
       setIsLoading(false);
       refreshSalesDays();
     });
+
+    // Lắng nghe realtime từ Firebase cho ngày được chọn (đồng bộ giữa các thiết bị)
+    const unsubscribe = subscribeRemoteDailySheet(selectedDate, (remoteSheet) => {
+      setDailySheet(remoteSheet);
+      refreshSalesDays();
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [selectedDate, dishes, refreshSalesDays]);
 
   // Active dishes hiện đang làm cột trên sheet
@@ -93,11 +128,15 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       .filter((d): d is Dish => Boolean(d));
   }, [dailySheet, dishes]);
 
-  // Lưu sheet vào IndexedDB (tự động thực thi dọn dẹp giữ tối đa 10 ngày)
+  // Lưu sheet: Ghi vào IndexedDB cục bộ + Đẩy lên Firebase Realtime
   const persistSheet = useCallback(async (newSheet: DailySheet) => {
     setDailySheet(newSheet);
+    // 1. Lưu ngay vào IndexedDB cục bộ (Bảo đảm an toàn offline)
     await saveDailySheetToDB(newSheet);
     await refreshSalesDays();
+
+    // 2. Đẩy lên Firebase Firestore Realtime cho các thiết bị khác cùng cập nhật
+    await pushDailySheetToFirestore(newSheet);
   }, [refreshSalesDays]);
 
   // Thêm dòng đơn hàng mới
@@ -184,7 +223,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     persistSheet({ ...dailySheet, orders: newOrders });
   };
 
-  // MÓN ĂN & MENU
+  // MÓN ĂN & MENU: Ghi IndexedDB + Đẩy Firebase
   const addOrUpdateDish = async (dish: Dish) => {
     let updated: Dish[];
     const exists = dishes.some(d => d.id === dish.id);
@@ -194,7 +233,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       updated = [...dishes, dish];
     }
     setDishes(updated);
+    // 1. Ghi IndexedDB
     await saveStoredDishes(updated);
+    // 2. Đẩy Firebase Realtime
+    await pushDishesToFirestore(updated);
 
     if (dailySheet && !dailySheet.dishIds.includes(dish.id)) {
       const newDishIds = [...dailySheet.dishIds, dish.id];
@@ -205,7 +247,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const deleteDish = async (dishId: string) => {
     const updated = dishes.filter(d => d.id !== dishId);
     setDishes(updated);
+    // 1. Ghi IndexedDB
     await saveStoredDishes(updated);
+    // 2. Đẩy Firebase Realtime
+    await pushDishesToFirestore(updated);
 
     if (dailySheet && dailySheet.dishIds.includes(dishId)) {
       persistSheet({
@@ -236,6 +281,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     const defaultIds = INITIAL_DISHES.map(d => d.id);
     setDishes(INITIAL_DISHES);
     saveStoredDishes(INITIAL_DISHES);
+    pushDishesToFirestore(INITIAL_DISHES);
     persistSheet({
       date: selectedDate,
       dishIds: defaultIds,
@@ -255,6 +301,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         activeSalesDays,
         savedDaysCount: activeSalesDays.length,
+        isFirebaseConfigured,
         addOrderRow,
         updateOrderRow,
         deleteOrderRow,

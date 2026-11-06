@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isAdminPhone) {
       // Xác thực mật khẩu admin
       if (!password) {
-        return { success: false, message: 'Vui lòng nhập mật khẩu Quản trị viên' };
+        return { success: false, message: 'Vui lòng nhập mật khẩu' };
       }
       // Hỗ trợ mật khẩu mặc định hoặc mật khẩu được lưu tuỳ biến
       const storedAdminPass = typeof window !== 'undefined' 
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         : DEFAULT_ADMIN_PASSWORD;
 
       if (password !== storedAdminPass && password !== 'admin123' && password !== '123456') {
-        return { success: false, message: 'Mật khẩu quản trị viên không chính xác! (Mặc định: "admin")' };
+        return { success: false, message: 'Mật khẩu không chính xác!' };
       }
 
       const adminUser: UserProfile = {

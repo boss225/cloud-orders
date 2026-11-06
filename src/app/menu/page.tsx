@@ -98,7 +98,7 @@ export default function MenuManagementPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900">
-              Quản Lý Menu & Món Ăn Trong Ngày
+              Quản Lý Menu & Món Trong Ngày
             </h1>
             <p className="text-xs text-slate-500">
               Chọn các món xuất hiện làm cột trên Sheet Order ngày{" "}
@@ -115,7 +115,7 @@ export default function MenuManagementPage() {
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
           >
             <BookOpen className="w-4 h-4" />
-            <span>Quay lại Sheet Order</span>
+            <span>Quay lại Order</span>
           </Link>
 
           {isAdmin ? (

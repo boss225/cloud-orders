@@ -45,12 +45,3 @@ export interface DailySheet {
   notes?: string;
   updatedAt: string;
 }
-
-export interface FirebaseConfigState {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket: string;
-  messagingSenderId: string;
-  appId: string;
-}

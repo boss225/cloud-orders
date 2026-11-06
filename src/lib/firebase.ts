@@ -10,23 +10,8 @@ export interface FirebaseConfig {
   appId: string;
 }
 
-// Lấy config từ localStorage nếu người dùng nhập qua giao diện, hoặc từ biến môi trường
+// Lấy config bí mật từ biến môi trường (.env)
 export function getStoredFirebaseConfig(): FirebaseConfig | null {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const custom = localStorage.getItem('cloud_order_firebase_config');
-    if (custom) {
-      const parsed = JSON.parse(custom);
-      if (parsed.projectId && parsed.apiKey) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.error('Error reading firebase config from localStorage', e);
-  }
-
-  // Fallback sang env vars
   const envConfig: FirebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',

@@ -29,7 +29,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
     deleteOrderRow 
   } = useOrder();
 
-  const { isLoggedIn, openLoginModal } = useAuth();
+  const { isLoggedIn, isAdmin, openLoginModal } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
   if (!dailySheet) {
@@ -93,8 +93,8 @@ export default function OrderSheetTable({ onEditRow }: Props) {
       <div 
         className="relative flex-1 min-h-0 overflow-auto rounded-2xl border border-slate-300 bg-white shadow-sm"
         style={{
-          height: 'calc(100dvh - 54px - 42px - 20px)',
-          maxHeight: 'calc(100dvh - 54px - 42px - 20px)'
+          height: 'calc(100dvh - 54px - 42px - 40px)',
+          maxHeight: 'calc(100dvh - 54px - 42px - 40px)'
         }}
       >
         <table className="w-full text-left border-collapse select-none text-xs">
@@ -135,12 +135,12 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                 NOTE
               </th>
 
-              <th className="py-2.5 px-1 text-center w-16 border-r border-slate-300 text-xs font-black uppercase text-slate-800 bg-slate-100">
-                Đã giao
+              <th className="py-2.5 px-1 text-center w-14 border-r border-slate-300 text-xs font-black uppercase text-slate-800 bg-slate-100">
+                Giao
               </th>
 
-              <th className="py-2.5 px-1 text-center w-20 text-xs font-black uppercase text-slate-800 bg-slate-100">
-                Thao tác
+              <th className="py-2.5 px-1 text-center w-18 text-xs font-black uppercase text-slate-800 bg-slate-100">
+                Sửa/Xóa
               </th>
             </tr>
           </thead>
@@ -210,8 +210,8 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                             )}
                           </div>
 
-                          {/* Trạng thái khi Rê chuột / Hover: CHỈ KÍCH HOẠT KHI ĐÃ ĐĂNG NHẬP */}
-                          {isLoggedIn ? (
+                          {/* Trạng thái khi Rê chuột / Hover: CHỈ KÍCH HOẠT KHI LÀ ADMIN */}
+                          {isAdmin ? (
                             <div className="absolute inset-0 bg-white rounded hidden group-hover/cell:flex flex-col items-center justify-center p-0.5 shadow-xs border border-orange-200 z-10 animate-fadeIn">
                               {/* Con số nhỏ ở trên để người dùng dễ dàng nhìn thấy thay đổi */}
                               <span className="text-[12px] font-black text-red-700 leading-tight">
@@ -247,7 +247,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                             <div 
                               onClick={openLoginModal}
                               className="absolute inset-0 bg-slate-50/95 rounded hidden group-hover/cell:flex items-center justify-center p-0.5 shadow-xs border border-slate-200 z-10 cursor-pointer"
-                              title="Bấm để đăng nhập và chỉnh sửa"
+                              title={!isLoggedIn ? 'Bấm để đăng nhập Admin' : 'Chỉ tài khoản Admin mới có quyền cộng/trừ món'}
                             >
                               <Lock className="w-3.5 h-3.5 text-slate-400" />
                             </div>
@@ -267,52 +267,52 @@ export default function OrderSheetTable({ onEditRow }: Props) {
                       )}
                     </td>
 
-                    {/* Delivered Checkmark (Disabled if not logged in) */}
+                    {/* Delivered Checkmark (Chỉ Admin mới có quyền tích) */}
                     <td className="py-1.5 px-1 text-center border-r border-slate-200">
                       <button
-                        onClick={isLoggedIn ? () => toggleRowDelivered(order.id) : openLoginModal}
-                        disabled={!isLoggedIn}
+                        onClick={isAdmin ? () => toggleRowDelivered(order.id) : openLoginModal}
+                        disabled={!isAdmin}
                         className={`w-7 h-7 mx-auto rounded-lg flex items-center justify-center transition ${
-                          !isLoggedIn
+                          !isAdmin
                             ? 'opacity-30 cursor-not-allowed bg-slate-100 border border-slate-200 text-slate-300'
                             : isDelivered 
                               ? 'bg-emerald-500 text-white shadow-xs active:scale-90' 
                               : 'border-2 border-slate-300 hover:border-emerald-500 text-slate-300 hover:text-emerald-500 bg-white active:scale-90'
                         }`}
-                        title={!isLoggedIn ? 'Vui lòng đăng nhập để đánh dấu đã giao' : isDelivered ? 'Đã giao' : 'Chưa giao (bấm để tích)'}
+                        title={!isAdmin ? 'Chỉ tài khoản Admin mới có quyền đánh dấu đã giao' : isDelivered ? 'Đã giao' : 'Chưa giao (bấm để tích)'}
                       >
                         <Check className="w-4 h-4 stroke-[3]" />
                       </button>
                     </td>
 
-                    {/* Actions (Edit / Delete) - Disabled if not logged in */}
+                    {/* Actions (Edit / Delete) - Chỉ Admin mới có quyền */}
                     <td className="py-1.5 px-1 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-0.5">
                         <button
-                          onClick={isLoggedIn ? () => onEditRow(order) : openLoginModal}
-                          disabled={!isLoggedIn}
+                          onClick={isAdmin ? () => onEditRow(order) : openLoginModal}
+                          disabled={!isAdmin}
                           className={`w-7 h-7 rounded-lg flex items-center justify-center transition ${
-                            !isLoggedIn
+                            !isAdmin
                               ? 'opacity-25 cursor-not-allowed text-slate-300'
                               : 'text-slate-500 hover:text-orange-600 hover:bg-orange-100/70 active:scale-90'
                           }`}
-                          title={!isLoggedIn ? 'Vui lòng đăng nhập để sửa đơn' : 'Sửa đơn'}
+                          title={!isAdmin ? 'Chỉ tài khoản Admin mới có quyền sửa đơn' : 'Sửa đơn'}
                         >
                           <Edit className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
                         <button
-                          onClick={isLoggedIn ? () => {
+                          onClick={isAdmin ? () => {
                             if (confirm(`Xóa đơn "${primaryAddress}"?`)) {
                               deleteOrderRow(order.id);
                             }
                           } : openLoginModal}
-                          disabled={!isLoggedIn}
+                          disabled={!isAdmin}
                           className={`w-7 h-7 rounded-lg flex items-center justify-center transition ${
-                            !isLoggedIn
+                            !isAdmin
                               ? 'opacity-25 cursor-not-allowed text-slate-300'
                               : 'text-slate-400 hover:text-red-600 hover:bg-red-50 active:scale-90'
                           }`}
-                          title={!isLoggedIn ? 'Vui lòng đăng nhập để xóa đơn' : 'Xóa đơn'}
+                          title={!isAdmin ? 'Chỉ tài khoản Admin mới có quyền xóa đơn' : 'Xóa đơn'}
                         >
                           <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
@@ -329,7 +329,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
             <tr className="border-t-2 border-slate-300 bg-slate-100 text-slate-900 shadow-xs">
               <td colSpan={2} className="py-2.5 px-2.5 font-black text-xs uppercase tracking-wider border-r border-slate-300 bg-slate-100">
                 <div className="flex items-center justify-between">
-                  <span>Tổng Bếp Làm:</span>
+                  <span>Tổng:</span>
                   <span className="text-xs text-orange-700 font-black">
                     {dailySheet.orders.length} đơn
                   </span>
@@ -357,7 +357,7 @@ export default function OrderSheetTable({ onEditRow }: Props) {
 
               <td colSpan={3} className="py-2.5 px-2 text-right bg-slate-100">
                 <span className="text-[11px] text-slate-500 font-semibold">
-                  Lưu IndexedDB (10 ngày)
+                  Lưu (10 ngày)
                 </span>
               </td>
             </tr>
