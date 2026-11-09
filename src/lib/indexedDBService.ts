@@ -335,3 +335,48 @@ export async function requestPersistentStorage(): Promise<boolean> {
     return false;
   }
 }
+
+// ===== Sao lưu / khôi phục thủ công (JSON) =====
+export interface BackupData {
+  app: 'cloud-order';
+  version: 1;
+  exportedAt: string;
+  dishes: Dish[];
+  sheets: DailySheet[];
+}
+
+export async function exportAllData(): Promise<BackupData> {
+  const db = await openDB();
+  const readAll = <T,>(storeName: string) =>
+    new Promise<T[]>((resolve, reject) => {
+      const req = db.transaction(storeName, 'readonly').objectStore(storeName).getAll();
+      req.onsuccess = () => resolve((req.result || []) as T[]);
+      req.onerror = () => reject(req.error);
+    });
+  const [dishes, sheets] = await Promise.all([
+    readAll<Dish>(STORES.DISHES),
+    readAll<DailySheet>(STORES.SHEETS),
+  ]);
+  return { app: 'cloud-order', version: 1, exportedAt: new Date().toISOString(), dishes, sheets };
+}
+
+// Ghi đè toàn bộ dữ liệu hiện tại bằng dữ liệu trong file sao lưu
+export async function importAllData(data: unknown): Promise<{ dishes: number; sheets: number }> {
+  const d = data as Partial<BackupData>;
+  if (!d || d.app !== 'cloud-order' || !Array.isArray(d.dishes) || !Array.isArray(d.sheets)) {
+    throw new Error('File sao lưu không hợp lệ');
+  }
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORES.DISHES, STORES.SHEETS], 'readwrite');
+    const dishStore = tx.objectStore(STORES.DISHES);
+    const sheetStore = tx.objectStore(STORES.SHEETS);
+    dishStore.clear();
+    sheetStore.clear();
+    d.dishes!.forEach((x) => dishStore.put(x));
+    d.sheets!.forEach((x) => sheetStore.put(x));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return { dishes: d.dishes.length, sheets: d.sheets.length };
+}

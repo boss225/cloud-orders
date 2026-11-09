@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useOrder } from '@/context/OrderContext';
+import BackupButtons from '@/components/BackupButtons';
 import { getTodayString, formatDateVN } from '@/lib/utils';
 import { 
   BookOpen, 
@@ -128,6 +129,8 @@ export default function Navbar({ onOpenKitchenSummary }: Props) {
 
         {/* Right Tools */}
         <div className="flex items-center gap-2">
+          <BackupButtons />
+
           {/* IndexedDB 10-Days Retention Badge & Quick Date Jumper */}
           <div className="relative">
             <button
