@@ -60,7 +60,6 @@ export default function Navbar({ onOpenKitchenSummary }: Props) {
               alt="Cloud Order" 
               className="w-9 h-9 rounded-xl object-cover shadow-xs border border-orange-200/60"
             />
-            <span className="font-black text-base text-slate-900 hidden sm:inline">Cloud Order</span>
           </Link>
 
           <nav className="flex items-center gap-1 pl-2 border-l border-slate-200">

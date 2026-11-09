@@ -322,3 +322,16 @@ export async function cleanAllSampleOrdersFromDB(): Promise<void> {
     console.error('Error cleaning sample orders from DB', e);
   }
 }
+
+// Yêu cầu trình duyệt đánh dấu kho lưu trữ là "persistent" để IndexedDB
+// không bị hệ điều hành/trình duyệt tự dọn khi thiếu dung lượng hoặc khi đóng PWA.
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch (err) {
+    console.warn('Cannot request persistent storage', err);
+    return false;
+  }
+}

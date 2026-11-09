@@ -6,11 +6,17 @@ import { AuthProvider } from '@/context/AuthContext';
 import { OrderProvider } from '@/context/OrderContext';
 import Navbar from '@/components/Navbar';
 import LoginModal from '@/components/LoginModal';
+import { requestPersistentStorage } from '@/lib/indexedDBService';
 import KitchenSummaryModal from '@/components/KitchenSummaryModal';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isKitchenSummaryOpen, setIsKitchenSummaryOpen] = useState(false);
+
+  // Xin quyền lưu trữ bền vững để IndexedDB không bị xóa khi dọn app/PWA
+  React.useEffect(() => {
+    requestPersistentStorage();
+  }, []);
 
   // Đăng ký Service Worker cho PWA (chỉ kích hoạt ở production, tự hủy ở localhost dev)
   React.useEffect(() => {
