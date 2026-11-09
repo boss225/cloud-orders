@@ -124,7 +124,8 @@ export async function getDailySheetFromDB(dateStr: string, activeDishIds: string
     });
 
     if (sheet) {
-      const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id);
+      // Mặc định: không chọn món nào trong menu
+  const defaultIds: string[] = [];
       const normalized: DailySheet = {
         ...sheet,
         dishIds: sheet.dishIds || defaultIds,
@@ -142,7 +143,8 @@ export async function getDailySheetFromDB(dateStr: string, activeDishIds: string
   }
 
   // Khởi tạo sheet mặc định nếu chưa có
-  const defaultIds = activeDishIds.length > 0 ? activeDishIds : INITIAL_DISHES.map((d) => d.id);
+  // Mặc định: không chọn món nào trong menu
+  const defaultIds: string[] = [];
   const defaultSheet: DailySheet = {
     date: dateStr,
     dishIds: defaultIds,
@@ -164,8 +166,9 @@ export async function saveDailySheetToDB(sheet: DailySheet): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORES.SHEETS, 'readwrite');
       const store = tx.objectStore(STORES.SHEETS);
-      if (!sheet.orders || sheet.orders.length === 0) {
-        // Không có đơn nào thì không lưu (và xóa bản cũ nếu có)
+      const hasMenu = (sheet.morningDishIds?.length ?? 0) > 0 || (sheet.afternoonDishIds?.length ?? 0) > 0 || (sheet.dishIds?.length ?? 0) > 0;
+      if ((!sheet.orders || sheet.orders.length === 0) && !hasMenu) {
+        // Không có đơn và không chọn món nào thì không lưu (và xóa bản cũ nếu có)
         store.delete(sheet.date);
       } else {
         store.put({ ...sheet, updatedAt: new Date().toISOString() });
@@ -299,8 +302,7 @@ export async function cleanAllSampleOrdersFromDB(): Promise<void> {
       req.onsuccess = () => {
         const sheets = (req.result || []) as DailySheet[];
         sheets.forEach((sheet) => {
-          if (!sheet.orders || sheet.orders.length === 0) {
-            store.delete(sheet.date);
+          if ((!sheet.orders || sheet.orders.length === 0)) {
             return;
           }
           const originalCount = sheet.orders ? sheet.orders.length : 0;

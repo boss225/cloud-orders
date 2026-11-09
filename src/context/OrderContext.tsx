@@ -74,9 +74,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [dishes, setDishes] = useState<Dish[]>(INITIAL_DISHES);
   const [dailySheet, setDailySheet] = useState<DailySheet | null>(() => ({
     date: getTodayString(),
-    dishIds: INITIAL_DISHES.map(d => d.id),
-    morningDishIds: INITIAL_DISHES.map(d => d.id),
-    afternoonDishIds: INITIAL_DISHES.map(d => d.id),
+    dishIds: [],
+    morningDishIds: [],
+    afternoonDishIds: [],
     orders: [],
     updatedAt: new Date().toISOString(),
   }));
@@ -120,9 +120,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         .map(o => ({ ...o, session: o.session || 'morning' }));
       const normalized: DailySheet = {
         ...sheet,
-        dishIds: sheet.dishIds || activeIds,
-        morningDishIds: sheet.morningDishIds ?? sheet.dishIds ?? activeIds,
-        afternoonDishIds: sheet.afternoonDishIds ?? sheet.dishIds ?? activeIds,
+        dishIds: sheet.dishIds || [],
+        morningDishIds: sheet.morningDishIds ?? sheet.dishIds ?? [],
+        afternoonDishIds: sheet.afternoonDishIds ?? sheet.dishIds ?? [],
         orders: cleanOrders,
       };
       setDailySheet(normalized);
