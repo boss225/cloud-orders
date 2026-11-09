@@ -9,7 +9,8 @@ import {
   saveDailySheetToDB, 
   getActiveSalesDays,
   deleteDailySheetFromDB,
-  cleanAllSampleOrdersFromDB 
+  cleanAllSampleOrdersFromDB,
+  isSampleOrderId 
 } from '@/lib/indexedDBService';
 import { getTodayString, getCurrentHourVN } from '@/lib/utils';
 import { INITIAL_DISHES, INITIAL_ORDERS } from '@/lib/mockData';
@@ -115,7 +116,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     // Tải từ IndexedDB cục bộ (nhanh, an toàn, hoàn toàn offline/manual)
     getDailySheetFromDB(selectedDate, activeIds).then((sheet) => {
       const cleanOrders = (sheet.orders || [])
-        .filter(o => !o.id.startsWith('row-'))
+        .filter(o => !isSampleOrderId(o.id))
         .map(o => ({ ...o, session: o.session || 'morning' }));
       const normalized: DailySheet = {
         ...sheet,

@@ -152,7 +152,7 @@ export async function getDailySheetFromDB(dateStr: string, activeDishIds: string
     updatedAt: new Date().toISOString(),
   };
 
-  await saveDailySheetToDB(defaultSheet);
+  // Ngày chưa có đơn thì không lưu vào DB
   return defaultSheet;
 }
 
@@ -164,10 +164,12 @@ export async function saveDailySheetToDB(sheet: DailySheet): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORES.SHEETS, 'readwrite');
       const store = tx.objectStore(STORES.SHEETS);
-      store.put({
-        ...sheet,
-        updatedAt: new Date().toISOString(),
-      });
+      if (!sheet.orders || sheet.orders.length === 0) {
+        // Không có đơn nào thì không lưu (và xóa bản cũ nếu có)
+        store.delete(sheet.date);
+      } else {
+        store.put({ ...sheet, updatedAt: new Date().toISOString() });
+      }
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -280,6 +282,11 @@ export async function deleteDailySheetFromDB(dateStr: string): Promise<void> {
   }
 }
 
+// Chỉ đơn mẫu cũ có id dạng row-1..row-99 (đơn thật có dạng row-<timestamp>-xxxx)
+export function isSampleOrderId(id?: string): boolean {
+  return !!id && /^row-\d{1,2}$/.test(id);
+}
+
 // Dọn sạch toàn bộ các đơn mẫu (row-1 đến row-18) khỏi IndexedDB và LocalStorage
 export async function cleanAllSampleOrdersFromDB(): Promise<void> {
   try {
@@ -292,9 +299,13 @@ export async function cleanAllSampleOrdersFromDB(): Promise<void> {
       req.onsuccess = () => {
         const sheets = (req.result || []) as DailySheet[];
         sheets.forEach((sheet) => {
+          if (!sheet.orders || sheet.orders.length === 0) {
+            store.delete(sheet.date);
+            return;
+          }
           const originalCount = sheet.orders ? sheet.orders.length : 0;
           if (originalCount > 0) {
-            sheet.orders = sheet.orders.filter((o) => !o.id.startsWith('row-'));
+            sheet.orders = sheet.orders.filter((o) => !isSampleOrderId(o.id));
             if (sheet.orders.length !== originalCount) {
               store.put(sheet);
             }
@@ -310,8 +321,8 @@ export async function cleanAllSampleOrdersFromDB(): Promise<void> {
         if (key.includes('sheet_')) {
           try {
             const item = JSON.parse(localStorage.getItem(key) || '{}');
-            if (item.orders && item.orders.some((o: any) => o.id?.startsWith('row-'))) {
-              item.orders = item.orders.filter((o: any) => !o.id?.startsWith('row-'));
+            if (item.orders && item.orders.some((o: any) => isSampleOrderId(o.id))) {
+              item.orders = item.orders.filter((o: any) => !isSampleOrderId(o.id));
               localStorage.setItem(key, JSON.stringify(item));
             }
           } catch (e) {}
